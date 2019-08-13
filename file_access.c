@@ -18,11 +18,24 @@ char filename[] = "/mnt/pm/file";
 
 uint64_t do_read_syscall_test(int fd, size_t block_size);
 
+
+/**
+ * For read tests, create a file prior to running tests using this command:
+ *      $ dd < /dev/zero bs=1048576 count=4096 > testfile
+ *
+ * It will actually allocate space on disk.
+ *
+ * To clear caches, use the following command on Linux:
+ *      # sync; echo 1 > /proc/sys/vm/drop_caches
+ */
+
+
 int main(int argc, char **argv) {
 
 	char *fname;
 	int fd;
 	size_t block_size = DEFAULT_BLOCK_SIZE;
+	uint64_t retval;
 
 	if (argc > 1)
 		fname = argv[1];
@@ -36,7 +49,8 @@ int main(int argc, char **argv) {
 		_exit(-1);
 	}
 
-	do_read_syscall_test(fd, block_size);
+	retval = do_read_syscall_test(fd, block_size);
+	printf("%" PRIu64 "\n",  retval);
 	//do_read_mmap_test(fd);
 
 }
