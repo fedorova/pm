@@ -2,8 +2,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -19,7 +21,7 @@ char default_fname[] = "/mnt/pm/file";
 
 uint64_t do_read_syscall_test(int fd, size_t block_size);
 uint64_t do_read_mmap_test(int fd, size_t block_size, const char *filename);
-size_t get_filesize(const char* filename);
+size_t   get_filesize(const char* filename);
 
 /**
  * For read tests, create a 4GB file prior to running tests using this command:
@@ -34,28 +36,70 @@ size_t get_filesize(const char* filename);
 
 int main(int argc, char **argv) {
 
-	char *fname;
-	int fd;
+	char *fname = (char*) default_fname;
+	int c, fd, option_index;
+	static int read_mmap = 0, read_syscall = 0;
 	size_t block_size = DEFAULT_BLOCK_SIZE;
 	uint64_t retval;
 
-	if (argc > 1)
-		fname = argv[1];
-	else
-		fname = (char*) default_fname;
+	static struct option long_options[] =
+        {
+		/* These options set a flag. */
+		{"readmmap",   no_argument,   &read_mmap, 1},
+		{"readsyscall", no_argument,  &read_syscall, 1},
+		/* These options take an argument. */
+		{"file",    required_argument, 0, 'f'},
+		{0, 0, 0, 0}
+	};
 
+	/* Read long options */
+	while (1) {
+		c = getopt_long (argc, argv, "",
+				 long_options, &option_index);
+
+		/* Detect the end of the options. */
+		if (c == -1)
+			break;
+
+		switch (c)
+		{
+		case 0:
+			/* If this option set a flag, do nothing else now. 
+			if (long_options[option_index].flag != 0)
+				break;
+			printf ("option %s", long_options[option_index].name);
+			if (optarg)
+				printf (" with arg %s", optarg);
+				printf ("\n"); */
+			break;
+		case 'f':
+			fname = optarg;
+			break;
+		default:
+			break;
+		}
+	}
 
 	fd = open((const char*)fname, O_RDWR | O_CREAT);
 	if (fd < 0) {
 		printf("Could not open file %s: %s\n", fname, strerror(errno));
 		_exit(-1);
 	}
+	else
+		printf("Using file %s\n", fname);
 
-	retval = do_read_syscall_test(fd, block_size);
-	printf("\t Meaningless return token: %" PRIu64 "\n",  retval);
+	if (read_syscall) {
+		printf("Running readsyscall test:\n");
+		retval = do_read_syscall_test(fd, block_size);
+		printf("\t Meaningless return token: %" PRIu64 "\n",  retval);
+	}
+	if (read_mmap) {
+		printf("Running readmmap test:\n");
+		retval = do_read_mmap_test(fd, block_size, (const char*) fname);
+		printf("\t Meaningless return token: %" PRIu64 "\n",  retval);
+	}
 
-	retval = do_read_mmap_test(fd, block_size, (const char*) fname);
-	printf("\t Meaningless return token: %" PRIu64 "\n",  retval);
+	close(fd);
 
 }
 
