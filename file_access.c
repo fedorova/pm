@@ -24,6 +24,8 @@ uint64_t do_read_mmap_test(int fd, size_t block_size, size_t filesize);
 size_t   get_filesize(const char* filename);
 void     print_help_message(const char* progname);
 
+static int silent = 0;
+
 /**
  * For read tests, create a 4GB file prior to running tests using this command:
  *      $ dd < /dev/zero bs=1048576 count=4096 > testfile
@@ -48,6 +50,7 @@ int main(int argc, char **argv) {
 		/* These options set a flag. */
 		{"readmmap", no_argument,   &read_mmap, 1},
 		{"readsyscall", no_argument,  &read_syscall, 1},
+		{"silent", no_argument,  &silent, 1},
 		/* These options take an argument. */
 		{"block", required_argument, 0, 'b'},
 		{"file", required_argument, 0, 'f'},
@@ -89,7 +92,8 @@ int main(int argc, char **argv) {
 		_exit(-1);
 	}
 	else
-		printf("Using file %s\n", fname);
+		if (!silent)
+			printf("Using file %s\n", fname);
 
 	if ((filesize = get_filesize(fname)) == -1)
 		_exit(-1);
@@ -102,14 +106,18 @@ int main(int argc, char **argv) {
 	}
 	
 	if (read_syscall) {
-		printf("Running readsyscall test:\n");
+		if (!silent)
+			printf("Running readsyscall test:\n");
 		retval = do_read_syscall_test(fd, block_size);
-		printf("\t Meaningless return token: %" PRIu64 "\n",  retval);
+		if (!silent)
+			printf("\t Meaningless return token: %" PRIu64 "\n",  retval);
 	}
 	if (read_mmap) {
-		printf("Running readmmap test:\n");
+		if (!silent)
+			printf("Running readmmap test:\n");
 		retval = do_read_mmap_test(fd, block_size, filesize);
-		printf("\t Meaningless return token: %" PRIu64 "\n",  retval);
+		if (!silent)
+			printf("\t Meaningless return token: %" PRIu64 "\n",  retval);
 	}
 
 	close(fd);
@@ -155,8 +163,9 @@ do_read_syscall_test(int fd, size_t block_size) {
 
 	end_time = nano_time();
 
-	printf("read_syscall: %" PRIu64 " bytes read in %" PRIu64 " ns.\n",
-	       (uint_least64_t)total_bytes_read, (end_time-begin_time));
+	if (!silent)
+		printf("read_syscall: %" PRIu64 " bytes read in %" PRIu64 " ns.\n",
+		       (uint_least64_t)total_bytes_read, (end_time-begin_time));
 	printf("\t %.2f bytes/second\n",
 	       (double)total_bytes_read/(double)(end_time-begin_time));
 
@@ -195,8 +204,9 @@ do_read_mmap_test(int fd, size_t block_size, size_t filesize) {
 
 	end_time = nano_time();
 
-	printf("read_mmap: %" PRIu64 " bytes read in %" PRIu64 " ns.\n",
-	       (uint_least64_t)filesize, (end_time-begin_time));
+	if (!silent)
+		printf("read_mmap: %" PRIu64 " bytes read in %" PRIu64 " ns.\n",
+		       (uint_least64_t)filesize, (end_time-begin_time));
 	printf("\t %.2f bytes/second\n",
 	       (double)filesize/(double)(end_time-begin_time));
 
