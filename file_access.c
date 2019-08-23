@@ -99,25 +99,28 @@ int main(int argc, char **argv) {
 		_exit(-1);
 
 	if (block_size < 0 || block_size > filesize) {
-		printf("Invalid block size: %" PRIu64 " for file of size %" PRIu64 "."
-		       "Block size must be greater than zero and no greater than the "
-		       "file size.\n", block_size, filesize);
+		printf("Invalid block size: %" PRIu64 " for file of size "
+		       "%" PRIu64 ". Block size must be greater than zero "
+		       "and no greater than the file size.\n",
+		       (uint_least64_t)block_size, (uint_least64_t)filesize);
 		_exit(-1);
 	}
-	
+
 	if (read_syscall) {
 		if (!silent)
 			printf("Running readsyscall test:\n");
 		retval = do_read_syscall_test(fd, block_size);
 		if (!silent)
-			printf("\t Meaningless return token: %" PRIu64 "\n",  retval);
+			printf("\t Meaningless return token: %" PRIu64 "\n",
+			       retval);
 	}
 	if (read_mmap) {
 		if (!silent)
 			printf("Running readmmap test:\n");
 		retval = do_read_mmap_test(fd, block_size, filesize);
 		if (!silent)
-			printf("\t Meaningless return token: %" PRIu64 "\n",  retval);
+			printf("\t Meaningless return token: %" PRIu64 "\n",
+			       retval);
 	}
 
 	close(fd);
@@ -164,8 +167,9 @@ do_read_syscall_test(int fd, size_t block_size) {
 	end_time = nano_time();
 
 	if (!silent)
-		printf("read_syscall: %" PRIu64 " bytes read in %" PRIu64 " ns.\n",
-		       (uint_least64_t)total_bytes_read, (end_time-begin_time));
+		printf("read_syscall: %" PRIu64 " bytes read in %" PRIu64 ""
+		       "ns.\n", (uint_least64_t)total_bytes_read,
+		       (end_time-begin_time));
 	printf("\t %.2f bytes/second\n",
 	       (double)total_bytes_read/(double)(end_time-begin_time));
 
@@ -180,7 +184,7 @@ uint64_t
 do_read_mmap_test(int fd, size_t block_size, size_t filesize) {
 
 	bool done = false;
-	char *mmapped_buffer = NULL;
+	char *mmapped_buffer = NULL, *buffer = NULL;
 	int i, ret;
 	uint64_t begin_time, end_time, ret_token = 0;
 
@@ -197,10 +201,18 @@ do_read_mmap_test(int fd, size_t block_size, size_t filesize) {
 		return -1;
 	}
 
+	buffer = (char*)malloc(block_size);
+	if (buffer == NULL) {
+		printf("Failed to allocate a buffer: %s\n", strerror(errno));
+		return -1;
+	}
+
 	begin_time = nano_time();
 
-	for (i = 0; i < filesize; i += block_size)
-		ret_token += mmapped_buffer[i];
+	for (i = 0; i < filesize; i += block_size) {
+		memcpy(buffer, &mmapped_buffer[i], block_size);
+		ret_token += buffer[i];
+	}
 
 	end_time = nano_time();
 
