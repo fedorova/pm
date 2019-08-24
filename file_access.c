@@ -193,7 +193,7 @@ do_read_mmap_test(int fd, size_t block_size, size_t filesize) {
 				      MAP_PRIVATE, fd, 0);
 #else /* Assumes Linux 2.6.23 or newer */
 	mmapped_buffer = (char *)mmap(NULL, filesize, PROT_READ,
-				      MAP_PRIVATE | MAP_POPULATE, fd, 0);
+				      MAP_PRIVATE | MAP_POPULATE , fd, 0);
 #endif
 	if (mmapped_buffer == MAP_FAILED) {
 		printf("Failed to mmap file of size %" PRIu64 " : %s\n",
