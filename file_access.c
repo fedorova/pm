@@ -185,7 +185,7 @@ do_read_mmap_test(int fd, size_t block_size, size_t filesize) {
 
 	bool done = false;
 	char *mmapped_buffer = NULL, *buffer = NULL;
-	int i, ret;
+	int i, j, ret;
 	uint64_t begin_time, end_time, ret_token = 0;
 
 #ifdef __MACH__
@@ -209,10 +209,11 @@ do_read_mmap_test(int fd, size_t block_size, size_t filesize) {
 
 	begin_time = nano_time();
 
-	for (i = 0; i < filesize; i += block_size) {
-		memcpy(buffer, &mmapped_buffer[i], block_size);
-		ret_token += buffer[0];
-	}
+	for (j = 0; j < 4; j++)
+		for (i = 0; i < filesize; i += block_size) {
+			memcpy(buffer, &mmapped_buffer[i], block_size);
+			ret_token += buffer[0];
+		}
 
 	end_time = nano_time();
 
