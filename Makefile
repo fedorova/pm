@@ -1,5 +1,5 @@
 CC = gcc
-CXXFLAGS=
+CXXFLAGS=-g
 
 SRC_FILES := $(wildcard *.c)
 OBJ_FILES := $(SRC_FILES:.c=.o)

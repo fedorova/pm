@@ -23,13 +23,15 @@ const char DEFAULT_FNAME[] = "/mnt/pmem/testfile";
 
 uint64_t do_read_syscall_test(int fd, size_t block_size);
 uint64_t do_read_mmap_test(int fd, size_t block_size, size_t filesize);
+uint64_t do_write_mmap_test(int fd, size_t block_size, size_t filesize);
 size_t   get_filesize(const char* filename);
 void     print_help_message(const char* progname);
 
 static int silent = 0;
 
 /**
- * For read tests, create a 4GB file prior to running tests using this command:
+ * For certain tests, create a file prior to running them.
+ * This command will give you a 4GB:
  *      $ dd < /dev/zero bs=1048576 count=4096 > testfile
  *
  * It will actually allocate space on disk.
@@ -43,7 +45,8 @@ int main(int argc, char **argv) {
 
 	char *fname = (char*) DEFAULT_FNAME;
 	int c, fd, option_index;
-	static int read_mmap = 0, read_syscall = 0;
+	static int read_mmap = 0, read_syscall = 0,
+		write_mmap = 0, write_syscall = 0;
 	size_t block_size = DEFAULT_BLOCK_SIZE, filesize;
 	uint64_t retval;
 
@@ -53,6 +56,8 @@ int main(int argc, char **argv) {
 		{"readmmap", no_argument,   &read_mmap, 1},
 		{"readsyscall", no_argument,  &read_syscall, 1},
 		{"silent", no_argument,  &silent, 1},
+		{"writemmap", no_argument,   &write_mmap, 1},
+		{"writesyscall", no_argument,  &write_syscall, 1},
 		/* These options take an argument. */
 		{"block", required_argument, 0, 'b'},
 		{"file", required_argument, 0, 'f'},
@@ -88,7 +93,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	fd = open((const char*)fname, O_RDWR | O_CREAT);
+	fd = open((const char*)fname, O_RDWR);
 	if (fd < 0) {
 		printf("Could not open file %s: %s\n", fname, strerror(errno));
 		_exit(-1);
@@ -108,14 +113,6 @@ int main(int argc, char **argv) {
 		_exit(-1);
 	}
 
-	if (read_syscall) {
-		if (!silent)
-			printf("Running readsyscall test:\n");
-		retval = do_read_syscall_test(fd, block_size);
-		if (!silent)
-			printf("\t Meaningless return token: %" PRIu64 "\n",
-			       retval);
-	}
 	if (read_mmap) {
 		if (!silent)
 			printf("Running readmmap test:\n");
@@ -124,15 +121,43 @@ int main(int argc, char **argv) {
 			printf("\t Meaningless return token: %" PRIu64 "\n",
 			       retval);
 	}
+	if (read_syscall) {
+		if (!silent)
+			printf("Running readsyscall test:\n");
+		retval = do_read_syscall_test(fd, block_size);
+		if (!silent)
+			printf("\t Meaningless return token: %" PRIu64 "\n",
+			       retval);
+	}
+	if (write_mmap) {
+		if (!silent)
+			printf("Running writemmap test:\n");
+		retval = do_write_mmap_test(fd, block_size, filesize);
+		if (!silent)
+			printf("\t Meaningless return token: %" PRIu64 "\n",
+			       retval);
+	}
+#if 0
+	if (write_syscall) {
+		if (!silent)
+			printf("Running writesyscall test:\n");
+		retval = do_write_syscall_test(fd, block_size);
+		if (!silent)
+			printf("\t Meaningless return token: %" PRIu64 "\n",
+			       retval);
+	}
+#endif
 
 	close(fd);
 
 }
 
 /**
- *
+ * SYSCALL TESTS
  *
  */
+/* uint64_t do_syscall_test(int fd, size_t block_size);*/
+
 uint64_t
 do_read_syscall_test(int fd, size_t block_size) {
 
@@ -173,17 +198,37 @@ do_read_syscall_test(int fd, size_t block_size) {
 		       "ns.\n", (uint_least64_t)total_bytes_read,
 		       (end_time-begin_time));
 	printf("\t %.2f GB/second\n",
-	       (double)total_bytes_read/(double)(end_time-begin_time) * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
+	       (double)total_bytes_read/(double)(end_time-begin_time)
+	       * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 
 	return ret_token;
 }
 
 /**
- *
+ * MMAP tests
  *
  */
+
+#define READ 1
+#define WRITE 2
+
+uint64_t do_mmap_test(int fd, size_t block_size, size_t filesize, char optype);
+
 uint64_t
 do_read_mmap_test(int fd, size_t block_size, size_t filesize) {
+
+	return do_mmap_test(fd, block_size, filesize, READ);
+}
+
+uint64_t
+do_write_mmap_test(int fd, size_t block_size, size_t filesize) {
+
+	return do_mmap_test(fd, block_size, filesize, WRITE);
+}
+
+uint64_t
+do_mmap_test(int fd, size_t block_size, size_t filesize, char optype) {
+
 
 	bool done = false;
 	char *mmapped_buffer = NULL, *buffer = NULL;
@@ -191,10 +236,12 @@ do_read_mmap_test(int fd, size_t block_size, size_t filesize) {
 	uint64_t begin_time, end_time, ret_token = 0;
 
 #ifdef __MACH__
-	mmapped_buffer = (char *)mmap(NULL, filesize, PROT_READ,
+	mmapped_buffer = (char *)mmap(NULL, filesize,
+				      (optype==READ)?PROT_READ:PROT_WRITE,
 				      MAP_PRIVATE, fd, 0);
 #else /* Assumes Linux 2.6.23 or newer */
-	mmapped_buffer = (char *)mmap(NULL, filesize, PROT_READ,
+	mmapped_buffer = (char *)mmap(NULL, filesize,
+				      (optype==READ)?PROT_READ:PROT_WRITE,
 				      MAP_PRIVATE | MAP_POPULATE , fd, 0);
 #endif
 	if (mmapped_buffer == MAP_FAILED) {
@@ -208,21 +255,30 @@ do_read_mmap_test(int fd, size_t block_size, size_t filesize) {
 		printf("Failed to allocate a buffer: %s\n", strerror(errno));
 		return -1;
 	}
+	memset((void*)buffer, 0, block_size);
 
 	begin_time = nano_time();
 
 	for (i = 0; i < filesize; i += block_size) {
-		memcpy(buffer, &mmapped_buffer[i], block_size);
-		ret_token += buffer[0];
+		if (optype == READ) {
+			memcpy(buffer, &mmapped_buffer[i], block_size);
+			ret_token += buffer[0];
+		}
+		else if (optype == WRITE) {
+			memcpy(&mmapped_buffer[i], buffer, block_size);
+			ret_token += mmapped_buffer[i];
+		}
 	}
 
 	end_time = nano_time();
 
 	if (!silent)
-		printf("read_mmap: %" PRIu64 " bytes read in %" PRIu64 " ns.\n",
+		printf("%s: %" PRIu64 " bytes read in %" PRIu64 " ns.\n",
+		       (optype==READ)?"readmmap":"writemmap",
 		       (uint_least64_t)filesize, (end_time-begin_time));
 	printf("\t %.2f GB/second\n",
-	       (double)filesize/(double)(end_time-begin_time) * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
+	       (double)filesize/(double)(end_time-begin_time)
+	       * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 
 	ret = munmap(mmapped_buffer, filesize);
 	if (ret)
