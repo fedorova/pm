@@ -3,11 +3,15 @@
 #FILE=/mnt/data0/sasha/testfile
 FILE=/mnt/pmem/testfile
 
-PERF="perf record -g -e page-faults -e dTLB-load-misses -e LLC-load-misses  -e offcore_requests.all_data_rd -e offcore_response.all_code_rd.llc_miss.any_response  -e dtlb_load_misses.walk_completed_1g -e dtlb_load_misses.walk_completed_2m_4m -e dtlb_load_misses.walk_completed_4k -e dtlb_load_misses.walk_completed  -e dtlb_load_misses.walk_duration -e dtlb_load_misses.miss_causes_a_walk -e dtlb_load_misses.stlb_hit -e dtlb_load_misses.stlb_hit_2m -e dtlb_load_misses.stlb_hit_4k -e cycles"
+PERF="perf record -g -e page-faults -e dTLB-load-misses -e LLC-load-misses  -e offcore_requests.all_data_rd -e offcore_response.all_code_rd.llc_miss.any_response -e kmem:* -e filemap:* -e huge_memory:* -e pagemap:* -e dtlb_load_misses.walk_completed_1g -e dtlb_load_misses.walk_completed_2m_4m -e dtlb_load_misses.walk_completed_4k -e dtlb_load_misses.walk_completed  -e dtlb_load_misses.walk_duration -e dtlb_load_misses.miss_causes_a_walk -e dtlb_load_misses.stlb_hit -e dtlb_load_misses.stlb_hit_2m -e dtlb_load_misses.stlb_hit_4k -e page-faults -e major-faults -e minor-faults -e cycles -e ext4:* -e vmscan:*"
 #PERF=perf record -e cycles:up -a
 
-# Use the commands below to run a single test while collecting profiling info
-PROFILING_RUN=1
+drop_caches() {
+    (echo 1) > /proc/sys/vm/drop_caches;
+}
+
+# Use the block below to run a single test while collecting profiling info
+PROFILING_RUN=0
 if [ ${PROFILING_RUN} = 1 ]
 then
    echo "Doing a profiling run..."
@@ -15,22 +19,21 @@ then
    TEST=readmmap
    echo $FILE $BLOCK $TEST
 
-   sudo sync; echo 1 > /proc/sys/vm/drop_caches
+   drop_caches
    $PERF ./fa -b ${BLOCK} --${TEST} -f ${FILE} --silent
    exit 0
 fi
 
-for TEST in readsyscall readmmap
-#for TEST in readmmap
+#for TEST in readsyscall readmmap
+for TEST in readmmap
 do
     echo ${TEST}
     for BLOCK in 512 1024 2048 4096 8192 16384
     do
 	for i in {1..3}
 	do
-	    sudo sync; echo 1 > /proc/sys/vm/drop_caches
-	    ./fa -b ${BLOCK} --${TEST} -f ${FILE} --silent
+	    drop_caches
+	    ./fa -b ${BLOCK} --${TEST} -f ${FILE}
 	done
     done
 done
-

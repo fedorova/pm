@@ -15,7 +15,9 @@
 
 #include "nano_time.h"
 
+#define BYTES_IN_GB (1024 * 1024 * 1024)
 #define DEFAULT_BLOCK_SIZE 4096
+#define NANOSECONDS_IN_SECOND 1000000000
 
 const char DEFAULT_FNAME[] = "/mnt/pmem/testfile";
 
@@ -170,8 +172,8 @@ do_read_syscall_test(int fd, size_t block_size) {
 		printf("read_syscall: %" PRIu64 " bytes read in %" PRIu64 ""
 		       "ns.\n", (uint_least64_t)total_bytes_read,
 		       (end_time-begin_time));
-	printf("\t %.2f bytes/second\n",
-	       (double)total_bytes_read/(double)(end_time-begin_time));
+	printf("\t %.2f GB/second\n",
+	       (double)total_bytes_read/(double)(end_time-begin_time) * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 
 	return ret_token;
 }
@@ -209,19 +211,18 @@ do_read_mmap_test(int fd, size_t block_size, size_t filesize) {
 
 	begin_time = nano_time();
 
-	for (j = 0; j < 4; j++)
-		for (i = 0; i < filesize; i += block_size) {
-			memcpy(buffer, &mmapped_buffer[i], block_size);
-			ret_token += buffer[0];
-		}
+	for (i = 0; i < filesize; i += block_size) {
+		memcpy(buffer, &mmapped_buffer[i], block_size);
+		ret_token += buffer[0];
+	}
 
 	end_time = nano_time();
 
 	if (!silent)
 		printf("read_mmap: %" PRIu64 " bytes read in %" PRIu64 " ns.\n",
 		       (uint_least64_t)filesize, (end_time-begin_time));
-	printf("\t %.2f bytes/second\n",
-	       (double)filesize/(double)(end_time-begin_time));
+	printf("\t %.2f GB/second\n",
+	       (double)filesize/(double)(end_time-begin_time) * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 
 	ret = munmap(mmapped_buffer, filesize);
 	if (ret)
