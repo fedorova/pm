@@ -21,9 +21,10 @@
 
 const char DEFAULT_FNAME[] = "/mnt/pmem/testfile";
 
-uint64_t do_read_syscall_test(int fd, size_t block_size);
 uint64_t do_read_mmap_test(int fd, size_t block_size, size_t filesize);
+uint64_t do_read_syscall_test(int fd, size_t block_size, size_t filesize);
 uint64_t do_write_mmap_test(int fd, size_t block_size, size_t filesize);
+uint64_t do_write_syscall_test(int fd, size_t block_size, size_t filesize);
 size_t   get_filesize(const char* filename);
 void     print_help_message(const char* progname);
 
@@ -124,7 +125,7 @@ int main(int argc, char **argv) {
 	if (read_syscall) {
 		if (!silent)
 			printf("Running readsyscall test:\n");
-		retval = do_read_syscall_test(fd, block_size);
+		retval = do_read_syscall_test(fd, block_size, filesize);
 		if (!silent)
 			printf("\t Meaningless return token: %" PRIu64 "\n",
 			       retval);
@@ -137,33 +138,49 @@ int main(int argc, char **argv) {
 			printf("\t Meaningless return token: %" PRIu64 "\n",
 			       retval);
 	}
-#if 0
 	if (write_syscall) {
 		if (!silent)
 			printf("Running writesyscall test:\n");
-		retval = do_write_syscall_test(fd, block_size);
+		retval = do_write_syscall_test(fd, block_size, filesize);
 		if (!silent)
 			printf("\t Meaningless return token: %" PRIu64 "\n",
 			       retval);
 	}
-#endif
 
 	close(fd);
 
 }
 
+
+#define READ 1
+#define WRITE 2
+
 /**
  * SYSCALL TESTS
  *
  */
-/* uint64_t do_syscall_test(int fd, size_t block_size);*/
+uint64_t
+do_syscall_test(int fd, size_t block_size, size_t filesize, char optype);
 
 uint64_t
-do_read_syscall_test(int fd, size_t block_size) {
+do_read_syscall_test(int fd, size_t block_size, size_t filesize) {
+
+	return do_syscall_test(fd, block_size, filesize, READ);
+}
+
+uint64_t
+do_write_syscall_test(int fd, size_t block_size, size_t filesize) {
+
+	return do_syscall_test(fd, block_size, filesize, WRITE);
+}
+
+
+uint64_t
+do_syscall_test(int fd, size_t block_size, size_t filesize, char optype) {
 
 	bool done = false;
 	char *buffer = NULL;
-	size_t total_bytes_read = 0;
+	size_t total_bytes_transferred = 0;
 	uint64_t begin_time, end_time, ret_token = 0;
 
 	buffer = (char*)malloc(block_size);
@@ -176,15 +193,25 @@ do_read_syscall_test(int fd, size_t block_size) {
 
 	while (!done) {
 
-		size_t bytes_read = read(fd, buffer, block_size);
-		if (bytes_read == 0)
+		size_t bytes_transferred = 0;
+
+		if (optype == READ)
+			bytes_transferred = read(fd, buffer, block_size);
+		else if (optype == WRITE)
+			bytes_transferred = write(fd, buffer, block_size);
+
+		if (bytes_transferred == 0)
 			done = true;
-		if (bytes_read == -1) {
-			printf("Failed to read: %s\n", strerror(errno));
+		else if (bytes_transferred == -1) {
+			printf("Failed to do I/O: %s\n", strerror(errno));
 			return -1;
 		}
 		else {
-			total_bytes_read +=  bytes_read;
+			total_bytes_transferred +=  bytes_transferred;
+
+			if (optype == WRITE &&
+			    total_bytes_transferred == filesize)
+				done = true;
 
 			/* Pretend that we actually use the data */
 			ret_token += buffer[0];
@@ -194,11 +221,12 @@ do_read_syscall_test(int fd, size_t block_size) {
 	end_time = nano_time();
 
 	if (!silent)
-		printf("read_syscall: %" PRIu64 " bytes read in %" PRIu64 ""
-		       "ns.\n", (uint_least64_t)total_bytes_read,
+		printf("%s: %" PRIu64 " bytes transferred in %" PRIu64 ""
+		       "ns.\n", (optype == READ)?"readsyscall":"writesyscall",
+		       (uint_least64_t)total_bytes_transferred,
 		       (end_time-begin_time));
 	printf("\t %.2f GB/second\n",
-	       (double)total_bytes_read/(double)(end_time-begin_time)
+	       (double)total_bytes_transferred/(double)(end_time-begin_time)
 	       * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 
 	return ret_token;
@@ -208,9 +236,6 @@ do_read_syscall_test(int fd, size_t block_size) {
  * MMAP tests
  *
  */
-
-#define READ 1
-#define WRITE 2
 
 uint64_t do_mmap_test(int fd, size_t block_size, size_t filesize, char optype);
 
