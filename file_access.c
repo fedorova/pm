@@ -225,7 +225,8 @@ do_syscall_test(int fd, size_t block_size, size_t filesize, char optype) {
 		       "ns.\n", (optype == READ)?"readsyscall":"writesyscall",
 		       (uint_least64_t)total_bytes_transferred,
 		       (end_time-begin_time));
-	printf("\t %.2f GB/second\n",
+	/* Print throughput in GB/second */
+	printf("\t %.2f\n",
 	       (double)total_bytes_transferred/(double)(end_time-begin_time)
 	       * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 
@@ -301,7 +302,8 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype) {
 		printf("%s: %" PRIu64 " bytes read in %" PRIu64 " ns.\n",
 		       (optype==READ)?"readmmap":"writemmap",
 		       (uint_least64_t)filesize, (end_time-begin_time));
-	printf("\t %.2f GB/second\n",
+	/* Print throughput in GB/second */
+	printf("\t %.2f\n",
 	       (double)filesize/(double)(end_time-begin_time)
 	       * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 
