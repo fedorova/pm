@@ -162,22 +162,24 @@ int main(int argc, char **argv) {
 	}
 
 	/*
-	 * Generate block numbers for random file access. 
+	 * Generate random block numbers for random file access.
+	 * Sequential for sequential access.
 	 */
-	if (randomaccess) {
-		numblocks = filesize / block_size;
-		if (filesize % block_size > 0)
-			numblocks++;
+	numblocks = filesize / block_size;
+	if (filesize % block_size > 0)
+		numblocks++;
 
-		offsets = (off_t *) malloc(numblocks * sizeof(off_t));
-		if (offsets == 0) {
-			printf("Failed to allocate memory: %s\n",
-			       strerror(errno));
-			_exit(-1);
-		}
-		for (int i = 0; i < numblocks; i++)
-			offsets[i] = ((int)random() % numblocks) * block_size;
+	offsets = (off_t *) malloc(numblocks * sizeof(off_t));
+	if (offsets == 0) {
+		printf("Failed to allocate memory: %s\n",
+		       strerror(errno));
+		_exit(-1);
 	}
+	for (int i = 0; i < numblocks; i++)
+		if (randomaccess)
+			offsets[i] = ((int)random() % numblocks) * block_size;
+		else
+			offsets[i] = i*block_size;
 
 	if (read_mmap) {
 		if (!silent)
@@ -246,7 +248,6 @@ do_write_syscall_test(int fd, size_t block_size, size_t filesize,
 	return do_syscall_test(fd, block_size, filesize, WRITE, offsets);
 }
 
-
 uint64_t
 do_syscall_test(int fd, size_t block_size, size_t filesize, char optype,
 		 off_t *offsets) {
@@ -266,26 +267,16 @@ do_syscall_test(int fd, size_t block_size, size_t filesize, char optype,
 	begin_time = nano_time();
 
 	while (!done) {
-
 		size_t bytes_transferred = 0;
 
 		if (optype == READ)
-			if (offsets) /* Doing random access */
-				bytes_transferred = pread(fd, buffer,
-							  block_size,
-							  offsets[i++]);
-			else /* Sequential access */
-				bytes_transferred = read(fd, buffer,
-							 block_size);
+			bytes_transferred = pread(fd, buffer,
+						  block_size,
+						  offsets[i++]);
 		else if (optype == WRITE)
-			if (offsets) /* Doing random access */
-				bytes_transferred = pwrite(fd, buffer,
-							  block_size,
-							  offsets[i++]);
-			else /* Sequential access */
-				bytes_transferred = write(fd, buffer,
-							 block_size);
-
+			bytes_transferred = pwrite(fd, buffer,
+						   block_size,
+						   offsets[i++]);
 		if (bytes_transferred == 0)
 			done = true;
 		else if (bytes_transferred == -1) {
@@ -302,7 +293,7 @@ do_syscall_test(int fd, size_t block_size, size_t filesize, char optype,
 			/* Pretend that we actually use the data */
 			ret_token += buffer[0];
 		}
-		if (offsets && (i*block_size >= filesize))
+		if (i*block_size >= filesize)
 			done = true;
 	}
 
@@ -388,12 +379,16 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 
 	begin_time = nano_time();
 
+	/* If we change the loop spec as follows:
+	 * for (i = 0; i < filesize/block_size; i++)
+	 * and then use 'i' to index the offset array
+	 * sequential read throughput drops by 16x. 
+	 * I don't understand why. But be careful 
+	 * changing this loop.
+	 */
 	for (i = 0; i < filesize; i+=block_size) {
-	  	off_t offset;
-		if (offsets)
-			offset = offsets[i/block_size];
-		else
-			offset=i;
+		off_t offset = offsets[i/block_size];
+
 		if (optype == READ) {
 			memcpy(buffer, &mmapped_buffer[offset],
 			       block_size);
