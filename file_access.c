@@ -162,26 +162,21 @@ int main(int argc, char **argv) {
 	}
 
 	/*
-	 * Generate block numbers for file access. Sequential for sequential
-	 * access, random for random access.
+	 * Generate block numbers for random file access. 
 	 */
-	numblocks = filesize / block_size;
-	if (filesize % block_size > 0)
-		numblocks++;
+	if (randomaccess) {
+		numblocks = filesize / block_size;
+		if (filesize % block_size > 0)
+			numblocks++;
 
-	offsets = (off_t *) malloc(numblocks * sizeof(off_t));
-	if (offsets == 0) {
-		printf("Failed to allocate memory: %s\n",
-		       strerror(errno));
-		_exit(-1);
-	}
-	for (int i = 0; i < numblocks; i++) {
-		int blockid;
-		if (randomaccess)
-			blockid = (int)random() % numblocks;
-		else
-			blockid = i;
-		offsets[i] = blockid * block_size;
+		offsets = (off_t *) malloc(numblocks * sizeof(off_t));
+		if (offsets == 0) {
+			printf("Failed to allocate memory: %s\n",
+			       strerror(errno));
+			_exit(-1);
+		}
+		for (int i = 0; i < numblocks; i++)
+			offsets[i] = ((int)random() % numblocks) * block_size;
 	}
 
 	if (read_mmap) {
@@ -274,14 +269,22 @@ do_syscall_test(int fd, size_t block_size, size_t filesize, char optype,
 
 		size_t bytes_transferred = 0;
 
-		off_t offset = offsets[i++];
-
 		if (optype == READ)
-			bytes_transferred = pread(fd, buffer, block_size,
-						  offset);
+			if (offsets) /* Doing random access */
+				bytes_transferred = pread(fd, buffer,
+							  block_size,
+							  offsets[i++]);
+			else /* Sequential access */
+				bytes_transferred = read(fd, buffer,
+							 block_size);
 		else if (optype == WRITE)
-			bytes_transferred = pwrite(fd, buffer, block_size,
-						  offset);
+			if (offsets) /* Doing random access */
+				bytes_transferred = pwrite(fd, buffer,
+							  block_size,
+							  offsets[i++]);
+			else /* Sequential access */
+				bytes_transferred = write(fd, buffer,
+							 block_size);
 
 		if (bytes_transferred == 0)
 			done = true;
@@ -299,7 +302,7 @@ do_syscall_test(int fd, size_t block_size, size_t filesize, char optype,
 			/* Pretend that we actually use the data */
 			ret_token += buffer[0];
 		}
-		if (i*block_size >= filesize)
+		if (offsets && (i*block_size >= filesize))
 			done = true;
 	}
 
@@ -385,9 +388,12 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 
 	begin_time = nano_time();
 
-	for (i = 0; i < filesize/block_size; i++) {
-		off_t offset = offsets[i];
-
+	for (i = 0; i < filesize; i+=block_size) {
+	  	off_t offset;
+		if (offsets)
+			offset = offsets[i/block_size];
+		else
+			offset=i;
 		if (optype == READ) {
 			memcpy(buffer, &mmapped_buffer[offset],
 			       block_size);
