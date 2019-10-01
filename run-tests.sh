@@ -28,14 +28,14 @@ fi
 ACCESS=""
 
 # Uncomment for random access tests. Leave commented out otherwise.
-#ACCESS="--randomaccess"
+ACCESS="--randomaccess"
 
 echo $ACCESS
 
 #for TEST in readsyscall
 #for TEST in readmmap
-for TEST in readmmap readsyscall
-#for TEST in writemmap writesyscall
+#for TEST in readmmap readsyscall
+for TEST in writemmap writesyscall
 do
     echo ${TEST}
     for BLOCK in 512 1024 2048 4096 8192 16384
