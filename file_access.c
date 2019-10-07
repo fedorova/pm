@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
 		read_mmap = 0, read_syscall = 0,
 		write_mmap = 0, write_syscall = 0;
 	off_t *offsets = 0;
-	size_t block_size = DEFAULT_BLOCK_SIZE, filesize, new_file_size = -1;
+	size_t block_size = DEFAULT_BLOCK_SIZE, filesize, new_file_size = 0;
 	uint64_t retval;
 
 	mode_t mode = S_IRWXU | S_IRWXG;
@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
 			print_help_message(argv[0]);
 			_exit(0);
 		case 's':
-			new_file_size = atoi(optarg);
+			new_file_size = (size_t)(atoi(optarg)) * BYTES_IN_GB;
 			break;
 		default:
 			break;
@@ -121,7 +121,7 @@ int main(int argc, char **argv) {
 			print_help_message(argv[0]);
 			_exit(-1);
 		}
-		if (new_file_size < 0) {
+		if (new_file_size == 0) {
 			printf("If --createfile option is provided, you must "
 			       "also provide the size of the new file as the "
 			       "argument to -s option.\n");
@@ -130,7 +130,6 @@ int main(int argc, char **argv) {
 		}
 		flags |= O_CREAT | O_APPEND;
 	}
-
 
 	if (!silent)
 		printf("Using file %s\n", fname);
@@ -444,16 +443,16 @@ print_help_message(const char *progname) {
 	       "     Print this help and exit.\n");
 	printf("  -b, --block[=BLOCKSIZE]\n"
 	       "     Block size used for read system calls.\n"
-	       "     For mmap tests, the size of the stride when iterating "
+	       "     For mmap tests, the size of the stride when iterating\n"
 	       "     over the file.\n"
 	       "     Defaults to %d.\n", DEFAULT_BLOCK_SIZE);
 	printf("  -f, --file[=FILENAME]\n"
 	       "     Perform all tests on this file (defaults to %s).\n",
 	       DEFAULT_FNAME);
 	printf("  --createfilel\n"
-	       "     The test assumes that the file does not exist and will "
-	       "     create it. This option is valid only with read tests. "
-	       "     If using this option you must also supply the file size "
+	       "     The test assumes that the file does not exist and will\n"
+	       "     create it. This option is valid only with read tests.\n"
+	       "     If using this option you must also supply the file size\n"
 	       "     as the argument to -s option.\n");
 	printf("  --readsyscall\n"
 	       "     Perform a read test using system calls.\n");
