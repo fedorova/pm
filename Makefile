@@ -1,5 +1,5 @@
 CC = gcc
-CXXFLAGS=-g
+CXXFLAGS=-g -D_GNU_SOURCE
 
 SRC_FILES := $(wildcard *.c)
 OBJ_FILES := $(SRC_FILES:.c=.o)
