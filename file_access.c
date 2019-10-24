@@ -262,6 +262,7 @@ do_syscall_test(int fd, size_t block_size, size_t filesize, char optype,
 		printf("Failed to allocate memory: %s\n", strerror(errno));
 		return -1;
 	}
+	memset((void*)buffer, 0, block_size);
 
 	begin_time = nano_time();
 
@@ -343,6 +344,15 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 	int i, j, numblocks, ret;
 	uint64_t begin_time, end_time, ret_token = 0;
 
+	buffer = (char*)malloc(block_size);
+	if (buffer == NULL) {
+		printf("Failed to allocate memory: %s\n", strerror(errno));
+		return -1;
+	}
+	memset((void*)buffer, 0, block_size);
+
+	begin_time = nano_time();
+
 	if (createfile) {
 
 		ret = ftruncate(fd, filesize);
@@ -369,20 +379,11 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 		return -1;
 	}
 
-	buffer = (char*)malloc(block_size);
-	if (buffer == NULL) {
-		printf("Failed to allocate memory: %s\n", strerror(errno));
-		return -1;
-	}
-	memset((void*)buffer, 0, block_size);
-
-	begin_time = nano_time();
-
 	/* If we change the loop spec as follows:
 	 * for (i = 0; i < filesize/block_size; i++)
 	 * and then use 'i' to index the offset array
-	 * sequential read throughput drops by 16x. 
-	 * I don't understand why. But be careful 
+	 * sequential read throughput drops by 16x.
+	 * I don't understand why. But be careful
 	 * changing this loop.
 	 */
 	for (i = 0; i < filesize; i+=block_size) {

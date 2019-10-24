@@ -3,7 +3,7 @@
 #include <time.h>
 #include "nano_time.h"
 
-#define USE_RDTSC
+/* #define USE_RDTSC */
 #define NS_IN_SECOND 1000000000
 
 #ifdef __MACH__
@@ -59,8 +59,8 @@ nano_time(void) {
 #else
 #ifdef __linux__
 	struct timespec ts;
-	if( clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
-		return ts.tv_sec * NS_IN_SECOND + ts.tv_nsec;
+	if( clock_gettime(CLOCK_REALTIME, &ts) == 0)
+	    return ts.tv_sec * NS_IN_SECOND + ts.tv_nsec;
 	else
 		return 0;
 #elif defined __MACH__
