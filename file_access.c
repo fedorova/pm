@@ -351,8 +351,6 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 	}
 	memset((void*)buffer, 0, block_size);
 
-	begin_time = nano_time();
-
 	if (createfile) {
 
 		ret = ftruncate(fd, filesize);
@@ -378,6 +376,8 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 		       (uint_least64_t)filesize, strerror(errno));
 		return -1;
 	}
+
+	begin_time = nano_time();
 
 	/* If we change the loop spec as follows:
 	 * for (i = 0; i < filesize/block_size; i++)

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-FILE=/mnt/data0/sasha/testfile
-#FILE=/mnt/pmem/testfile
+#FILE=/mnt/data0/sasha/testfile
+FILE=/mnt/pmem/testfile
 
 echo $FILE
 
@@ -13,21 +13,21 @@ drop_caches() {
 }
 
 # Use the block below to run a single test while collecting profiling info
-PROFILING_RUN=0
+PROFILING_RUN=1
 if [ ${PROFILING_RUN} = 1 ]
 then
    echo "Doing a profiling run..."
    BLOCK=16384
-   TEST=readsyscall
+   TEST=readmmap
    echo $FILE $BLOCK $TEST
 
-#   drop_caches
-   $PERF ./fa -b ${BLOCK} --${TEST} -f ${FILE}  --randomaccess
+#   drop_caches  --randomaccess
+   $PERF ./fa -b ${BLOCK} --${TEST} -f ${FILE} 
    exit 0
 fi
 
 # Uncomment for random access tests.
-ACCESS="--randomaccess"
+#ACCESS="--randomaccess"
 echo $ACCESS
 
 # Uncomment for creating a new file.
@@ -48,7 +48,7 @@ do
     do
 	for i in {1..3}
 	do
-	    drop_caches
+#	    drop_caches
 	    ./fa -b ${BLOCK} --${TEST} -f ${FILE} --silent ${ACCESS} ${CREATE} ${SIZE}
 	    # If the test needs to create the file each time, delete the file
 	    # that the test just creates.
