@@ -49,12 +49,12 @@ static int silent = 0;
 int main(int argc, char **argv) {
 
 	char *fname = (char*) DEFAULT_FNAME;
-	int c, fd, flags = O_RDWR, numblocks = 0, option_index;
+	int c, fd, flags = O_RDWR, option_index;
 	static int createfile = 0, randomaccess = 0,
 		read_mmap = 0, read_syscall = 0,
 		write_mmap = 0, write_syscall = 0;
 	off_t *offsets = 0;
-	size_t block_size = DEFAULT_BLOCK_SIZE, filesize, new_file_size = 0;
+	size_t block_size = DEFAULT_BLOCK_SIZE, filesize, numblocks, new_file_size = 0;
 	uint64_t retval;
 
 	mode_t mode = S_IRWXU | S_IRWXG;
@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
 		       strerror(errno));
 		_exit(-1);
 	}
-	for (int i = 0; i < numblocks; i++)
+	for (size_t i = 0; i < numblocks; i++)
 		if (randomaccess)
 			offsets[i] = ((int)random() % numblocks) * block_size;
 		else
@@ -341,7 +341,7 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 
 	bool done = false;
 	char *mmapped_buffer = NULL, *buffer = NULL;
-	int i, j, numblocks, ret;
+	uint64_t i, j, numblocks, ret;
 	uint64_t begin_time, end_time, ret_token = 0;
 
 	buffer = (char*)malloc(block_size);
@@ -369,7 +369,7 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 #else /* Assumes Linux 2.6.23 or newer */
 	mmapped_buffer = (char *)mmap(NULL, filesize,
 				      (optype==READ)?PROT_READ:PROT_WRITE,
-				      MAP_PRIVATE | MAP_POPULATE , fd, 0);
+				      MAP_PRIVATE, fd, 0);
 #endif
 	if (mmapped_buffer == MAP_FAILED) {
 		printf("Failed to mmap file of size %" PRIu64 " : %s\n",
@@ -388,7 +388,6 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 	 */
 	for (i = 0; i < filesize; i+=block_size) {
 		off_t offset = offsets[i/block_size];
-
 		if (optype == READ) {
 			memcpy(buffer, &mmapped_buffer[offset],
 			       block_size);

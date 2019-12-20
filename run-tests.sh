@@ -13,7 +13,7 @@ drop_caches() {
 }
 
 # Use the block below to run a single test while collecting profiling info
-PROFILING_RUN=1
+PROFILING_RUN=0
 if [ ${PROFILING_RUN} = 1 ]
 then
    echo "Doing a profiling run..."
