@@ -384,7 +384,6 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 	 * I don't understand why. But be careful
 	 * changing this loop.
 	 */
-	for (j = 0; j < 50; j++)
 	for (i = 0; i < filesize; i+=block_size) {
 		off_t offset = offsets[i/block_size];
 		if (optype == READ) {
