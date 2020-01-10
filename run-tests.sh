@@ -1,8 +1,8 @@
 #!/bin/bash
 
-FILE=/mnt/data0/sasha/testfile
 #FILE=/mnt/pmem/testfile
-FILE=/home/sasha/Work/testfile
+#FILE=/home/sasha/Work/testfile
+FILE=/mnt/data0/sasha/testfile
 
 echo $FILE
 
