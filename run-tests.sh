@@ -1,9 +1,11 @@
 #!/bin/bash
 
+
 #FILE=/mnt/data0/sasha/testfile
 FILE=/mnt/pmem/sasha/testfile
 #FILE=/data/sasha/testfile
 FILE=/home/sasha/Work/testfile
+
 
 echo $FILE
 
