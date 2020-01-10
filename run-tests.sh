@@ -1,11 +1,13 @@
 #!/bin/bash
 
 #FILE=/mnt/data0/sasha/testfile
-FILE=/mnt/pmem/testfile
+FILE=/mnt/pmem/sasha/testfile
+#FILE=/data/sasha/testfile
+FILE=/home/sasha/Work/testfile
 
 echo $FILE
 
-PERF="perf record -g -e page-faults -e dTLB-load-misses -e LLC-load-misses  -e offcore_requests.all_data_rd -e offcore_response.all_code_rd.llc_miss.any_response -e kmem:* -e filemap:* -e huge_memory:* -e pagemap:* -e dtlb_load_misses.walk_completed_1g -e dtlb_load_misses.walk_completed_2m_4m -e dtlb_load_misses.walk_completed_4k -e dtlb_load_misses.walk_completed  -e dtlb_load_misses.walk_duration -e dtlb_load_misses.miss_causes_a_walk -e dtlb_load_misses.stlb_hit -e dtlb_load_misses.stlb_hit_2m -e dtlb_load_misses.stlb_hit_4k -e page-faults -e major-faults -e minor-faults -e cycles -e ext4:* -e vmscan:*"
+#PERF="perf record -g -e page-faults -e dTLB-load-misses -e LLC-load-misses  -e offcore_requests.all_data_rd -e offcore_response.all_code_rd.llc_miss.any_response -e kmem:* -e filemap:* -e huge_memory:* -e pagemap:* -e dtlb_load_misses.walk_completed_1g -e dtlb_load_misses.walk_completed_2m_4m -e dtlb_load_misses.walk_completed_4k -e dtlb_load_misses.walk_completed  -e dtlb_load_misses.walk_duration -e dtlb_load_misses.miss_causes_a_walk -e dtlb_load_misses.stlb_hit -e dtlb_load_misses.stlb_hit_2m -e dtlb_load_misses.stlb_hit_4k -e page-faults -e major-faults -e minor-faults -e cycles -e ext4:* -e vmscan:*"
 PERF="perf record -e cycles -e dTLB-loads -e dTLB-load-misses -e page-faults"
 
 drop_caches() {
@@ -18,11 +20,11 @@ if [ ${PROFILING_RUN} = 1 ]
 then
    echo "Doing a profiling run..."
    BLOCK=16384
-   TEST=readsyscall
+   TEST=readmmap
    echo $FILE $BLOCK $TEST
 
 #   drop_caches  --randomaccess
-   $PERF ./fa -b ${BLOCK} --${TEST} -f ${FILE}
+   $PERF ./fa -b ${BLOCK} --${TEST} -f ${FILE} 
    exit 0
 fi
 
