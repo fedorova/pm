@@ -15,7 +15,9 @@
 #include <unistd.h>
 
 //const char DEFAULT_FNAME[] = "/Users/sasha/testfile";
-const char DEFAULT_FNAME[] = "/home/sasha/testfile";
+//const char DEFAULT_FNAME[] = "/home/sasha/testfile";
+const char DEFAULT_FNAME[] = "/mnt/pmem/testfile";
+
 /*
 void mmap_thread_func(void *) {
 

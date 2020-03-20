@@ -4,7 +4,7 @@
 #FILE=/mnt/data0/sasha/testfile
 FILE=/mnt/pmem/sasha/testfile
 #FILE=/data/sasha/testfile
-FILE=/home/sasha/Work/testfile
+#FILE=/altroot/sasha/testfile
 
 
 echo $FILE
@@ -31,7 +31,7 @@ then
 fi
 
 # Uncomment for random access tests.
-#ACCESS="--randomaccess"
+ACCESS="--randomaccess"
 echo $ACCESS
 
 # Uncomment for creating a new file.
@@ -43,16 +43,19 @@ echo $ACCESS
 
 #for TEST in readsyscall
 #for TEST in readmmap readsyscall writesyscall
-for TEST in readmmap readsyscall
+#for TEST in readmmap readsyscall
+for TEST in readmmap
 #for TEST in writemmap writesyscall
 do
     echo ${TEST}
 #    for BLOCK in 512 1024 2048 4096 8192 16384
-    for BLOCK in 4096 8192 16384
+#    for BLOCK in 4096 8192 16384
+    for BLOCK in 4096
     do
-	for i in {1..3}
+	#	for i in {1..3}
+	for i in {1}
 	do
-#	    drop_caches
+	    drop_caches
 	    ./fa -b ${BLOCK} --${TEST} -f ${FILE} --silent ${ACCESS} ${CREATE} ${SIZE}
 	    # If the test needs to create the file each time, delete the file
 	    # that the test just creates.
