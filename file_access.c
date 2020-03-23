@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,20 +20,39 @@
 #define DEFAULT_BLOCK_SIZE 4096
 #define NANOSECONDS_IN_SECOND 1000000000
 
-const char DEFAULT_FNAME[] = "/mnt/pmem/testfile";
+const char DEFAULT_FNAME[] = "testfile";
 
-uint64_t do_read_mmap_test(int fd, size_t block_size, size_t filesize,
-			   off_t *offsets);
-uint64_t do_read_syscall_test(int fd, size_t block_size, size_t filesize,
+uint64_t do_read_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
+			   char* mmapped_buffer, off_t *offsets);
+uint64_t do_read_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
 			      off_t *offsets);
-uint64_t do_write_mmap_test(int fd, size_t block_size, size_t filesize,
-			    int createfile, off_t *offsets);
-uint64_t do_write_syscall_test(int fd, size_t block_size, size_t filesize,
+uint64_t do_write_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
+			    char* mmapped_buffer, int createfile, off_t *offsets);
+uint64_t do_write_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
 			       off_t *offsets);
 size_t   get_filesize(const char* filename);
+char*    map_buffer(int fd, size_t size);
 void     print_help_message(const char* progname);
+void    *run_tests(void *);
 
 static int silent = 0;
+
+typedef struct {
+	int tid;
+	int fd;
+	int createfile;
+	char *mapped_buffer;
+	int read_mmap;
+	int read_syscall;
+	int write_mmap;
+	int write_syscall;
+	off_t *offsets;
+	size_t block_size;
+	size_t chunk_size;
+	int retval;
+	uint64_t start_time;
+	uint64_t end_time;
+} threadargs_t;
 
 /**
  * For certain tests, create a file prior to running them.
@@ -49,13 +69,18 @@ static int silent = 0;
 int main(int argc, char **argv) {
 
 	char *fname = (char*) DEFAULT_FNAME;
-	int c, fd, flags = O_RDWR, option_index;
+	char *mapped_buffer = NULL;
+	int c, fd, flags = O_RDWR, i, numthreads = 1, ret, option_index;
 	static int createfile = 0, randomaccess = 0,
 		read_mmap = 0, read_syscall = 0,
 		write_mmap = 0, write_syscall = 0;
 	off_t *offsets = 0;
-	size_t block_size = DEFAULT_BLOCK_SIZE, filesize, numblocks, new_file_size = 0;
+	size_t block_size = DEFAULT_BLOCK_SIZE, filesize, numblocks,
+		new_file_size = 0;
 	uint64_t retval;
+
+	pthread_t *threads;
+	threadargs_t *threadargs;
 
 	mode_t mode = S_IRWXU | S_IRWXG;
 
@@ -69,17 +94,18 @@ int main(int argc, char **argv) {
 		{"silent", no_argument,  &silent, 1},
 		{"writemmap", no_argument,   &write_mmap, 1},
 		{"writesyscall", no_argument,  &write_syscall, 1},
-		/* These options take an argument. */
+		/* These options may take an argument. */
 		{"block", required_argument, 0, 'b'},
 		{"file", required_argument, 0, 'f'},
 		{"help", no_argument, 0, 'h'},
 		{"size", no_argument, 0, 's'},
+		{"threads", required_argument, 0, 't'},
 		{0, 0, 0, 0}
 	};
 
 	/* Read long options */
 	while (1) {
-		c = getopt_long (argc, argv, "b:f:hs:",
+		c = getopt_long (argc, argv, "b:f:hs:t:",
 				 long_options, &option_index);
 
 		/* Detect the end of the options. */
@@ -102,6 +128,9 @@ int main(int argc, char **argv) {
 			_exit(0);
 		case 's':
 			new_file_size = (size_t)(atoi(optarg)) * BYTES_IN_GB;
+			break;
+		case 't':
+			numthreads = (int) (atoi(optarg));
 			break;
 		default:
 			break;
@@ -174,16 +203,122 @@ int main(int argc, char **argv) {
 		       strerror(errno));
 		_exit(-1);
 	}
-	for (size_t i = 0; i < numblocks; i++)
+	for (size_t i = 0; i < numblocks; i++) {
 		if (randomaccess)
 			offsets[i] = ((int)random() % numblocks) * block_size;
 		else
 			offsets[i] = i*block_size;
+	}
+
+	if (!silent)
+		printf("Using %d threads\n", numthreads);
+
+	if (numblocks % numthreads != 0) {
+		printf("We have %" PRIu64 " blocks and %d threads. "
+		       "Threads must evenly divide blocks. "
+		       "Please fix your arguments.\n",
+		       (uint_least64_t)numblocks, numthreads);
+		_exit(-1);
+	}
+
+	if (read_mmap || write_mmap) {
+		mapped_buffer = map_buffer(fd, filesize);
+		if (mapped_buffer == NULL)
+			_exit(-1);
+	}
+
+	threads = (pthread_t*)malloc(numthreads * sizeof(pthread_t));
+	threadargs =
+		(threadargs_t*)malloc(numthreads * sizeof(threadargs_t));
+	if (threads == NULL || threadargs == NULL) {
+		printf("Could not allocate thread array for %d threads.\n",
+		       numthreads);
+		_exit(-1);
+	}
+
+	for (i = 0; i < numthreads; i++) {
+		threadargs[i].fd = fd;
+		threadargs[i].tid = i;
+		threadargs[i].block_size = block_size;
+		threadargs[i].chunk_size = filesize / numthreads;
+		threadargs[i].createfile = createfile;
+		threadargs[i].mapped_buffer = mapped_buffer;
+		threadargs[i].offsets = &offsets[numblocks/numthreads * i];
+		threadargs[i].read_mmap = read_mmap;
+		threadargs[i].read_syscall = read_syscall;
+		threadargs[i].write_mmap = write_mmap;
+		threadargs[i].write_syscall = write_syscall;
+
+
+
+		printf("TID: %d, Offsets: %p\n", i, threadargs[i].offsets);
+		printf("First offset: %" PRIu64 "\n",
+		       (uint64_t)threadargs[i].offsets[0]);
+
+		int ret = pthread_create(&threads[i], NULL, run_tests,
+					 &threadargs[i]);
+		if (ret != 0) {
+			printf("pthread_create for %dth thread failed: %s\n",
+			       i, strerror(errno));
+			_exit(-1);
+		}
+	}
+
+	for (i = 0; i < numthreads; i++) {
+		ret = pthread_join(threads[i], NULL);
+		if (ret != 0) {
+			printf("Thread %d failed: %s\n", i, strerror(ret));
+			_exit(-1);
+		}
+	}
+
+	/*
+	 * Tally up the running times. Find the smallest start time and
+	 * the largest end time across threads.
+	 */
+	uint64_t min_start_time = threadargs[0].start_time;
+	uint64_t max_end_time = threadargs[0].end_time;
+	for (i = 0; i < numthreads; i++) {
+		min_start_time = (threadargs[i].start_time < min_start_time)?
+			threadargs[i].start_time:min_start_time;
+		max_end_time = (threadargs[i].end_time > max_end_time)?
+			threadargs[i].end_time:max_end_time;
+	}
+
+	munmap(mapped_buffer, filesize);
+	close(fd);
+
+}
+
+void *
+run_tests(void *args) {
+
+	uint64_t retval;
+	threadargs_t t_args = *(threadargs_t*)args;
+
+	int fd = t_args.fd;
+	int tid = t_args.tid;
+	size_t block_size = t_args.block_size;
+	size_t filesize = t_args.chunk_size;
+	char *buf = t_args.mapped_buffer;
+	off_t *offsets = t_args.offsets;
+	int createfile = t_args.createfile;
+	int read_mmap = t_args.read_mmap;
+	int read_syscall = t_args.read_syscall;
+	int write_mmap = t_args.write_mmap;
+	int write_syscall = t_args.write_syscall;
+
+	if (!silent)
+		printf("Thread %d will run tests on chunk size %" PRIu64 ", "
+		       "with offsets starting at %p\n", tid,
+		       (uint64_t)t_args.chunk_size,
+		       t_args.offsets);
 
 	if (read_mmap) {
 		if (!silent)
 			printf("Running readmmap test:\n");
-		retval = do_read_mmap_test(fd, block_size, filesize, offsets);
+		retval = do_read_mmap_test(fd, tid, block_size, filesize, buf,
+					   offsets);
 		if (!silent)
 			printf("\t Meaningless return token: %" PRIu64 "\n",
 			       retval);
@@ -191,7 +326,7 @@ int main(int argc, char **argv) {
 	if (read_syscall) {
 		if (!silent)
 			printf("Running readsyscall test:\n");
-		retval = do_read_syscall_test(fd, block_size, filesize,
+		retval = do_read_syscall_test(fd, tid, block_size, filesize,
 					      offsets);
 		if (!silent)
 			printf("\t Meaningless return token: %" PRIu64 "\n",
@@ -200,7 +335,7 @@ int main(int argc, char **argv) {
 	if (write_mmap) {
 		if (!silent)
 			printf("Running writemmap test:\n");
-		retval = do_write_mmap_test(fd, block_size, filesize,
+		retval = do_write_mmap_test(fd, tid, block_size, filesize, buf,
 					    createfile, offsets);
 		if (!silent)
 			printf("\t Meaningless return token: %" PRIu64 "\n",
@@ -209,7 +344,7 @@ int main(int argc, char **argv) {
 	if (write_syscall) {
 		if (!silent)
 			printf("Running writesyscall test:\n");
-		retval = do_write_syscall_test(fd, block_size, filesize,
+		retval = do_write_syscall_test(fd, tid, block_size, filesize,
 					       offsets);
 
 		if (!silent)
@@ -217,10 +352,8 @@ int main(int argc, char **argv) {
 			       retval);
 	}
 
-	close(fd);
-
+	return (void*) 0;
 }
-
 
 #define READ 1
 #define WRITE 2
@@ -230,25 +363,25 @@ int main(int argc, char **argv) {
  *
  */
 uint64_t
-do_syscall_test(int fd, size_t block_size, size_t filesize, char optype,
+do_syscall_test(int fd, int tid, size_t block_size, size_t filesize, char optype,
 		off_t *offsets);
 
 uint64_t
-do_read_syscall_test(int fd, size_t block_size, size_t filesize,
+do_read_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
 		     off_t *offsets) {
 
-	return do_syscall_test(fd, block_size, filesize, READ, offsets);
+	return do_syscall_test(fd, tid, block_size, filesize, READ, offsets);
 }
 
 uint64_t
-do_write_syscall_test(int fd, size_t block_size, size_t filesize,
+do_write_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
 		      off_t *offsets) {
 
-	return do_syscall_test(fd, block_size, filesize, WRITE, offsets);
+	return do_syscall_test(fd, tid, block_size, filesize, WRITE, offsets);
 }
 
 uint64_t
-do_syscall_test(int fd, size_t block_size, size_t filesize, char optype,
+do_syscall_test(int fd, int tid, size_t block_size, size_t filesize, char optype,
 		 off_t *offsets) {
 
 	bool done = false;
@@ -312,33 +445,33 @@ do_syscall_test(int fd, size_t block_size, size_t filesize, char optype,
 
 /**
  * MMAP tests
- *
  */
 
-uint64_t do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
-		      int createfile, off_t *offsets);
+uint64_t do_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char *buf,
+		      char optype, int createfile, off_t *offsets);
 
 uint64_t
-do_read_mmap_test(int fd, size_t block_size, size_t filesize, off_t *offsets) {
+do_read_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char *buf,
+		  off_t *offsets) {
 
-	return do_mmap_test(fd, block_size, filesize, READ, 0, offsets);
+	return do_mmap_test(fd, tid, block_size, filesize, buf, READ, 0, offsets);
 }
 
 uint64_t
-do_write_mmap_test(int fd, size_t block_size, size_t filesize,
+do_write_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char *buf,
 		   int createfile, off_t *offsets) {
 
-	return do_mmap_test(fd, block_size, filesize, WRITE, createfile,
+	return do_mmap_test(fd, tid, block_size, filesize, buf, WRITE, createfile,
 			    offsets);
 }
 
 uint64_t
-do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
-	     int createfile, off_t *offsets) {
+do_mmap_test(int fd, int tid, size_t block_size, size_t size, char *mmapped_buffer,
+	     char optype, int createfile, off_t *offsets) {
 
 
 	bool done = false;
-	char *mmapped_buffer = NULL, *buffer = NULL;
+	char *buffer = NULL;
 	uint64_t i, j, numblocks, ret;
 	uint64_t begin_time, end_time, ret_token = 0;
 
@@ -349,42 +482,21 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 	}
 	memset((void*)buffer, 0, block_size);
 
-	if (createfile) {
-
-		ret = ftruncate(fd, filesize);
-		if (ret) {
-			printf("Failed to truncate the file to size "
-			       "%" PRIu64 " : %s\n",
-			       (uint_least64_t)filesize, strerror(errno));
-			return -1;
-		}
-	}
-
-#ifdef __MACH__
-	mmapped_buffer = (char *)mmap(NULL, filesize,
-				      (optype==READ)?PROT_READ:PROT_WRITE,
-				      MAP_PRIVATE, fd, 0);
-#else /* Assumes Linux 2.6.23 or newer */
-	mmapped_buffer = (char *)mmap(NULL, filesize,
-				      (optype==READ)?PROT_READ:PROT_WRITE,
-				      MAP_PRIVATE, fd, 0);
-#endif
-	if (mmapped_buffer == MAP_FAILED) {
-		printf("Failed to mmap file of size %" PRIu64 " : %s\n",
-		       (uint_least64_t)filesize, strerror(errno));
-		return -1;
-	}
+	printf("Thread %d will run tests on chunk size %" PRIu64 ", "
+	       "block size %" PRIu64 ", with offsets starting at %p.\n",
+	       tid, (uint64_t)size, (uint64_t)block_size,
+	       offsets);
 
 	begin_time = nano_time();
 
 	/* If we change the loop spec as follows:
-	 * for (i = 0; i < filesize/block_size; i++)
+	 * for (i = 0; i < size/block_size; i++)
 	 * and then use 'i' to index the offset array
 	 * sequential read throughput drops by 16x.
 	 * I don't understand why. But be careful
 	 * changing this loop.
 	 */
-	for (i = 0; i < filesize; i+=block_size) {
+	for (i = 0; i < size; i+=block_size) {
 		off_t offset = offsets[i/block_size];
 		if (optype == READ) {
 			memcpy(buffer, &mmapped_buffer[offset],
@@ -403,17 +515,36 @@ do_mmap_test(int fd, size_t block_size, size_t filesize, char optype,
 	if (!silent)
 		printf("%s: %" PRIu64 " bytes read in %" PRIu64 " ns.\n",
 		       (optype==READ)?"readmmap":"writemmap",
-		       (uint_least64_t)filesize, (end_time-begin_time));
+		       (uint_least64_t)size, (end_time-begin_time));
 	/* Print throughput in GB/second */
 	printf("\t %.2f\n",
-	       (double)filesize/(double)(end_time-begin_time)
+	       (double)size/(double)(end_time-begin_time)
 	       * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 
-	ret = munmap(mmapped_buffer, filesize);
-	if (ret)
-		printf("Error unmapping file: %s\n", strerror(errno));
-
 	return ret_token;
+}
+
+char *
+map_buffer(int fd, size_t size) {
+
+	char *mmapped_buffer = NULL;
+
+#ifdef __MACH__
+	mmapped_buffer = (char *)mmap(NULL, size,
+				      PROT_READ | PROT_WRITE,
+				      MAP_PRIVATE, fd, 0);
+#else /* Assumes Linux 2.6.23 or newer */
+	mmapped_buffer = (char *)mmap(NULL, size,
+				      PROT_READ | PROT_WRITE,
+				      MAP_PRIVATE, fd, 0);
+#endif
+	if (mmapped_buffer == MAP_FAILED) {
+		printf("Failed to mmap file of size %" PRIu64 " : %s\n",
+		       (uint_least64_t)size, strerror(errno));
+		return NULL;
+	}
+
+	return mmapped_buffer;
 }
 
 size_t
@@ -461,3 +592,17 @@ print_help_message(const char *progname) {
 	printf("  --writemmap\n"
 	       "     Perform a write test using mmap.\n");
 }
+
+/*
+	if (createfile) {
+
+		ret = ftruncate(fd, size);
+		if (ret) {
+			printf("Failed to truncate the file to size "
+			       "%" PRIu64 " : %s\n",
+			       (uint_least64_t)size, strerror(errno));
+			return -1;
+		}
+	}
+
+*/
