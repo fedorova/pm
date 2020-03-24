@@ -22,12 +22,17 @@
 
 const char DEFAULT_FNAME[] = "testfile";
 
+uint64_t do_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char *buf,
+		      char optype, int createfile, off_t *offsets, uint64_t *begin,
+		      uint64_t *end);
 uint64_t do_read_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
-			   char* mmapped_buffer, off_t *offsets);
+			   char* mmapped_buffer, off_t *offsets, uint64_t *begin,
+			   uint64_t *end);
 uint64_t do_read_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
 			      off_t *offsets);
 uint64_t do_write_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
-			    char* mmapped_buffer, int createfile, off_t *offsets);
+			    char* mmapped_buffer, int createfile, off_t *offsets,
+			    uint64_t *begin, uint64_t *end);
 uint64_t do_write_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
 			       off_t *offsets);
 size_t   get_filesize(const char* filename);
@@ -278,6 +283,9 @@ int main(int argc, char **argv) {
 		max_end_time = (threadargs[i].end_time > max_end_time)?
 			threadargs[i].end_time:max_end_time;
 	}
+	printf("all: \t %.2f\n",
+	       (double)filesize/(double)(max_end_time-min_start_time)
+	       * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 
 	munmap(mapped_buffer, filesize);
 	close(fd);
@@ -300,7 +308,10 @@ run_tests(void *args) {
 		if (!silent)
 			printf("Running readmmap test:\n");
 		retval = do_read_mmap_test(t.fd, t.tid, t.block_size, t.chunk_size,
-					   t.mapped_buffer, t.offsets);
+					   t.mapped_buffer, t.offsets,
+					   &((threadargs_t*)args)->start_time,
+					   &((threadargs_t*)args)->end_time);
+
 		if (!silent)
 			printf("\t Meaningless return token: %" PRIu64 "\n",
 			       retval);
@@ -430,27 +441,26 @@ do_syscall_test(int fd, int tid, size_t block_size, size_t filesize, char optype
  * MMAP tests
  */
 
-uint64_t do_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char *buf,
-		      char optype, int createfile, off_t *offsets);
-
 uint64_t
 do_read_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char *buf,
-		  off_t *offsets) {
+		  off_t *offsets, uint64_t *begin, uint64_t *end) {
 
-	return do_mmap_test(fd, tid, block_size, filesize, buf, READ, 0, offsets);
+	return do_mmap_test(fd, tid, block_size, filesize, buf, READ, 0, offsets,
+			    begin, end);
 }
 
 uint64_t
 do_write_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char *buf,
-		   int createfile, off_t *offsets) {
+		   int createfile, off_t *offsets, uint64_t *begin, uint64_t *end) {
 
 	return do_mmap_test(fd, tid, block_size, filesize, buf, WRITE, createfile,
-			    offsets);
+			    offsets, begin, end);
 }
 
 uint64_t
 do_mmap_test(int fd, int tid, size_t block_size, size_t size, char *mmapped_buffer,
-	     char optype, int createfile, off_t *offsets) {
+	     char optype, int createfile, off_t *offsets,
+	     uint64_t *begin, uint64_t *end) {
 
 
 	bool done = false;
@@ -495,9 +505,12 @@ do_mmap_test(int fd, int tid, size_t block_size, size_t size, char *mmapped_buff
 		       (optype==READ)?"readmmap":"writemmap",
 		       (uint_least64_t)size, (end_time-begin_time));
 	/* Print throughput in GB/second */
-	printf("\t %.2f\n",
+	printf("\t %d\t %.2f\n", tid,
 	       (double)size/(double)(end_time-begin_time)
 	       * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
+
+	*begin = begin_time;
+	*end   = end_time;
 
 	return ret_token;
 }
