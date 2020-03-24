@@ -249,12 +249,6 @@ int main(int argc, char **argv) {
 		threadargs[i].write_mmap = write_mmap;
 		threadargs[i].write_syscall = write_syscall;
 
-
-
-		printf("TID: %d, Offsets: %p\n", i, threadargs[i].offsets);
-		printf("First offset: %" PRIu64 "\n",
-		       (uint64_t)threadargs[i].offsets[0]);
-
 		int ret = pthread_create(&threads[i], NULL, run_tests,
 					 &threadargs[i]);
 		if (ret != 0) {
@@ -294,35 +288,24 @@ void *
 run_tests(void *args) {
 
 	uint64_t retval;
-	threadargs_t t_args = *(threadargs_t*)args;
-
-	int fd = t_args.fd;
-	int tid = t_args.tid;
-	size_t block_size = t_args.block_size;
-	size_t filesize = t_args.chunk_size;
-	char *buf = t_args.mapped_buffer;
-	off_t *offsets = t_args.offsets;
-	int createfile = t_args.createfile;
-	int read_mmap = t_args.read_mmap;
-	int read_syscall = t_args.read_syscall;
-	int write_mmap = t_args.write_mmap;
-	int write_syscall = t_args.write_syscall;
+	threadargs_t t = *(threadargs_t*)args;
 
 	if (!silent)
 		printf("Thread %d will run tests on chunk size %" PRIu64 ", "
-		       "with offsets starting at %p\n", tid,
-		       (uint64_t)t_args.chunk_size,
-		       t_args.offsets);
+		       "with offsets starting at %p\n", t.tid,
+		       (uint64_t)t.chunk_size,
+		       t.offsets);
 
-	if (read_mmap) {
+	if (t.read_mmap) {
 		if (!silent)
 			printf("Running readmmap test:\n");
-		retval = do_read_mmap_test(fd, tid, block_size, filesize, buf,
-					   offsets);
+		retval = do_read_mmap_test(t.fd, t.tid, t.block_size, t.chunk_size,
+					   t.mapped_buffer, t.offsets);
 		if (!silent)
 			printf("\t Meaningless return token: %" PRIu64 "\n",
 			       retval);
 	}
+#if 0
 	if (read_syscall) {
 		if (!silent)
 			printf("Running readsyscall test:\n");
@@ -351,7 +334,7 @@ run_tests(void *args) {
 			printf("\t Meaningless return token: %" PRIu64 "\n",
 			       retval);
 	}
-
+#endif
 	return (void*) 0;
 }
 
@@ -481,11 +464,6 @@ do_mmap_test(int fd, int tid, size_t block_size, size_t size, char *mmapped_buff
 		return -1;
 	}
 	memset((void*)buffer, 0, block_size);
-
-	printf("Thread %d will run tests on chunk size %" PRIu64 ", "
-	       "block size %" PRIu64 ", with offsets starting at %p.\n",
-	       tid, (uint64_t)size, (uint64_t)block_size,
-	       offsets);
 
 	begin_time = nano_time();
 

@@ -1,5 +1,6 @@
 CC = gcc
 CXXFLAGS=-g -D_GNU_SOURCE
+LDDFLAGS=-lpthread
 
 SRC_FILES := $(wildcard *.c)
 OBJ_FILES := $(SRC_FILES:.c=.o)
@@ -10,7 +11,7 @@ OBJ_FILES := $(SRC_FILES:.c=.o)
 all: fa
 
 fa: file_access.o nano_time.o
-	$(CC) -o  $@ $^
+	$(CC) -o  $@ $^ ${LDDFLAGS}
 
 %.o : %.c
 	$(CC) $(CXXFLAGS) -c -o $@ $<
