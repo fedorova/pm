@@ -8,6 +8,10 @@ FILE=/mnt/pmem/sasha/testfile
 
 THREADS=$1
 
+if [ -z ${THREADS} ]; then
+    THREADS=1
+fi
+
 echo $FILE
 echo $THREADS threads
 
