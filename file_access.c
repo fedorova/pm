@@ -47,11 +47,13 @@ uint64_t do_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char 
 uint64_t do_read_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
 			   char* buf, off_t *offs, uint64_t *begin, uint64_t *end);
 uint64_t do_read_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
-			      off_t *offsets);
+			      off_t *offsets,  uint64_t *begin, uint64_t *end);
+uint64_t do_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
+			 char optype, off_t *offsets, uint64_t *begin, uint64_t *end);
 uint64_t do_write_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
 			    char* buf, off_t *offs, uint64_t *begin, uint64_t *end);
 uint64_t do_write_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
-			       off_t *offsets);
+			       off_t *offsets,  uint64_t *begin, uint64_t *end);
 size_t   get_filesize(const char* filename);
 char*    map_buffer(int fd, size_t size);
 void     print_help_message(const char* progname);
@@ -291,7 +293,6 @@ int main(int argc, char **argv) {
 
 	munmap(mapped_buffer, filesize);
 	close(fd);
-
 }
 
 void *
@@ -309,14 +310,14 @@ run_tests(void *args) {
 
 		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n", retval);
 	}
-#if 0
-	if (read_syscall) {
+	if (t.read_syscall) {
 		MSG_NOT_SILENT("Running readsyscall test:\n");
-		retval = do_read_syscall_test(fd, tid, block_size, filesize,
-					      offsets);
+		retval = do_read_syscall_test(t.fd, t.tid, t.block_size, t.chunk_size,
+					      t.offsets,
+					      &((threadargs_t*)args)->start_time,
+					      &((threadargs_t*)args)->end_time);
 		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n", retval);
 	}
-#endif
 	if (t.write_mmap) {
 		MSG_NOT_SILENT("Running writemmap test:\n");
 		retval = do_write_mmap_test(t.fd, t.tid, t.block_size, t.chunk_size,
@@ -325,14 +326,14 @@ run_tests(void *args) {
 					    &((threadargs_t*)args)->end_time);
 		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n", retval);
 	}
-#if 0
-	if (write_syscall) {
+	if (t.write_syscall) {
 		MSG_NOT_SILENT("Running writesyscall test:\n");
-		retval = do_write_syscall_test(fd, tid, block_size, filesize,
-					       offsets);
+		retval = do_write_syscall_test(t.fd, t.tid, t.block_size,
+					       t.chunk_size, t.offsets,
+					       &((threadargs_t*)args)->start_time,
+					       &((threadargs_t*)args)->end_time);
 		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n", retval);
 	}
-#endif
 	return (void*) 0;
 }
 
@@ -344,26 +345,24 @@ run_tests(void *args) {
  *
  */
 uint64_t
-do_syscall_test(int fd, int tid, size_t block_size, size_t filesize, char optype,
-		off_t *offsets);
-
-uint64_t
 do_read_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
-		     off_t *offsets) {
+		     off_t *offsets, uint64_t *begin, uint64_t *end) {
 
-	return do_syscall_test(fd, tid, block_size, filesize, READ, offsets);
+	return do_syscall_test(fd, tid, block_size, filesize, READ, offsets,
+			       begin, end);
 }
 
 uint64_t
 do_write_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
-		      off_t *offsets) {
+		      off_t *offsets, uint64_t *begin, uint64_t *end) {
 
-	return do_syscall_test(fd, tid, block_size, filesize, WRITE, offsets);
+	return do_syscall_test(fd, tid, block_size, filesize, WRITE, offsets,
+			       begin, end);
 }
 
 uint64_t
 do_syscall_test(int fd, int tid, size_t block_size, size_t filesize, char optype,
-		 off_t *offsets) {
+		off_t *offsets, uint64_t *begin, uint64_t *end) {
 
 	bool done = false;
 	char *buffer = NULL;
@@ -411,16 +410,15 @@ do_syscall_test(int fd, int tid, size_t block_size, size_t filesize, char optype
 	}
 	end_time = nano_time();
 
-	if (!silent)
-		printf("%s: %" PRIu64 " bytes transferred in %" PRIu64 ""
-		       " ns.\n", (optype == READ)?"readsyscall":"writesyscall",
-		       (uint_least64_t)total_bytes_transferred,
-		       (end_time-begin_time));
-	/* Print throughput in GB/second */
-	printf("\t %.2f\n",
-	       (double)total_bytes_transferred/(double)(end_time-begin_time)
-	       * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
+	MSG_NOT_SILENT("%s: (tid %d) %.2f GB/s "
+		       "(%" PRIu64 " bytes in %" PRIu64 " ns).\n",
+		       (optype==READ)?"readsyscall":"writesyscall", tid,
+		       (double)filesize/(double)(end_time-begin_time)
+		       * NANOSECONDS_IN_SECOND / BYTES_IN_GB,
+		       (uint_least64_t)filesize, (end_time-begin_time));
 
+	*begin = begin_time;
+	*end   = end_time;
 	return ret_token;
 }
 
