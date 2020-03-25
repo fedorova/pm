@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 #FILE=/mnt/data0/sasha/testfile
 FILE=/mnt/pmem/sasha/testfile
 #FILE=/data/sasha/testfile
@@ -50,7 +49,7 @@ echo $ACCESS
 #for TEST in readsyscall
 #for TEST in readmmap readsyscall writesyscall
 #for TEST in readmmap readsyscall
-for TEST in readmmap
+for TEST in writemmap
 #for TEST in writemmap writesyscall
 do
     echo ${TEST}
@@ -60,13 +59,16 @@ do
     do
 	for i in {1..3}
 	do
-	    drop_caches
-	    ./fa -b ${BLOCK} --${TEST} -f ${FILE} --silent ${ACCESS} ${CREATE} ${SIZE} -t ${THREADS}
-	    # If the test needs to create the file each time, delete the file
-	    # that the test just creates.
-	    if [ -n "$CREATE" ]; then
-		rm ${FILE}
-	    fi
+	    for t in 1 2 4 8 16 32 64;
+	    do
+		drop_caches
+		./fa -b ${BLOCK} --${TEST} -f ${FILE} --silent ${ACCESS} ${CREATE} ${SIZE} -t $t
+		# If the test needs to create the file each time, delete the file
+		# that the test just creates.
+		if [ -n "$CREATE" ]; then
+		    rm ${FILE}
+		fi
+	    done
 	done
     done
 done
