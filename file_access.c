@@ -285,7 +285,7 @@ int main(int argc, char **argv) {
 		max_end_time = (threadargs[i].end_time > max_end_time)?
 			threadargs[i].end_time:max_end_time;
 	}
-	printf("all: \t %.2f\n",
+	printf("%d: \t %.2f\n", numthreads,
 	       (double)filesize/(double)(max_end_time-min_start_time)
 	       * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 
@@ -484,14 +484,12 @@ do_mmap_test(int fd, int tid, size_t block_size, size_t size, char *mmapped_buff
 
 	end_time = nano_time();
 
-	if (!silent)
-		printf("%s: %" PRIu64 " bytes read in %" PRIu64 " ns.\n",
-		       (optype==READ)?"readmmap":"writemmap",
+	MSG_NOT_SILENT("%s: (tid %d) %.2f GB/s "
+		       "(%" PRIu64 " bytes in %" PRIu64 " ns).\n",
+		       (optype==READ)?"readmmap":"writemmap", tid,
+		       (double)size/(double)(end_time-begin_time)
+		       * NANOSECONDS_IN_SECOND / BYTES_IN_GB,
 		       (uint_least64_t)size, (end_time-begin_time));
-	/* Print throughput in GB/second */
-	printf("\t %d\t %.2f\n", tid,
-	       (double)size/(double)(end_time-begin_time)
-	       * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 
 	*begin = begin_time;
 	*end   = end_time;
