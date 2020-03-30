@@ -12,7 +12,6 @@ if [ -z ${THREADS} ]; then
 fi
 
 echo $FILE
-echo $THREADS threads
 
 #PERF="perf record -g -e page-faults -e dTLB-load-misses -e LLC-load-misses  -e offcore_requests.all_data_rd -e offcore_response.all_code_rd.llc_miss.any_response -e kmem:* -e filemap:* -e huge_memory:* -e pagemap:* -e dtlb_load_misses.walk_completed_1g -e dtlb_load_misses.walk_completed_2m_4m -e dtlb_load_misses.walk_completed_4k -e dtlb_load_misses.walk_completed  -e dtlb_load_misses.walk_duration -e dtlb_load_misses.miss_causes_a_walk -e dtlb_load_misses.stlb_hit -e dtlb_load_misses.stlb_hit_2m -e dtlb_load_misses.stlb_hit_4k -e page-faults -e major-faults -e minor-faults -e cycles -e ext4:* -e vmscan:*"
 PERF="perf record -e cycles -e dTLB-loads -e dTLB-load-misses -e page-faults"
@@ -46,10 +45,10 @@ echo $ACCESS
 #echo $CREATE ${SIZE}GB
 
 
-#for TEST in readsyscall
+for TEST in readmmap
 #for TEST in readmmap readsyscall writesyscall
 #for TEST in readmmap readsyscall
-for TEST in writemmap
+#for TEST in readsyscall readmmap
 #for TEST in writemmap writesyscall
 do
     echo ${TEST}
@@ -57,12 +56,15 @@ do
 #    for BLOCK in 4096 8192 16384
     for BLOCK in 8192
     do
-	for i in {1..3}
+	for i in {1..7}
+#	for i in {1}
 	do
-	    for t in 1 2 4 8 16 32 64;
+#	    for t in 1 2 4 8 16 32 64;
+	    for t in 4;
 	    do
-		drop_caches
-		./fa -b ${BLOCK} --${TEST} -f ${FILE} --silent ${ACCESS} ${CREATE} ${SIZE} -t $t
+		#		drop_caches
+		#		dd < /dev/zero bs=1048576 count=32768 > /mnt/pmem/sasha/testfile
+		./fa -b ${BLOCK} --${TEST} -f ${FILE} ${ACCESS} ${CREATE} ${SIZE} -t $t --silent
 		# If the test needs to create the file each time, delete the file
 		# that the test just creates.
 		if [ -n "$CREATE" ]; then

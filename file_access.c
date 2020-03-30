@@ -455,7 +455,7 @@ do_mmap_test(int fd, int tid, size_t block_size, size_t size, char *mmapped_buff
 		printf("Failed to allocate memory: %s\n", strerror(errno));
 		return -1;
 	}
-	memset((void*)buffer, 0, block_size);
+	memset((void*)buffer, 1, block_size);
 
 	begin_time = nano_time();
 
@@ -503,11 +503,11 @@ map_buffer(int fd, size_t size) {
 #ifdef __MACH__
 	mmapped_buffer = (char *)mmap(NULL, size,
 				      PROT_READ | PROT_WRITE,
-				      MAP_PRIVATE, fd, 0);
+				      MAP_SHARED, fd, 0);
 #else /* Assumes Linux 2.6.23 or newer */
 	mmapped_buffer = (char *)mmap(NULL, size,
 				      PROT_READ | PROT_WRITE,
-				      MAP_PRIVATE, fd, 0);
+				      MAP_SHARED, fd, 0);
 #endif
 	if (mmapped_buffer == MAP_FAILED)
 		EXIT_MSG("Failed to mmap file of size %" PRIu64 " : %s\n",
