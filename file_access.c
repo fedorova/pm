@@ -100,6 +100,10 @@ typedef struct {
  *
  * To clear caches, use the following command on Linux:
  *      # sync; echo 1 > /proc/sys/vm/drop_caches
+ *
+ * To create devdax namespace:
+ * $ sudo ndctl create-namespace --force --reconfig=namespace0.0 \
+ *           --mode=devdax --align=2M
  */
 
 
