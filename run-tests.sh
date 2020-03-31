@@ -56,8 +56,8 @@ do
 #    for BLOCK in 4096 8192 16384
     for BLOCK in 8192
     do
-	for i in {1..7}
-#	for i in {1}
+#	for i in {1..7}
+	for i in {1}
 	do
 #	    for t in 1 2 4 8 16 32 64;
 	    for t in 4;

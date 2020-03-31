@@ -19,9 +19,22 @@
 
 #define BYTES_IN_GB (1024 * 1024 * 1024)
 #define DEFAULT_BLOCK_SIZE 4096
+#define DEFAULT_SIZE_DEVDAX_GB 32
 #define NANOSECONDS_IN_SECOND 1000000000
 
-const char DEFAULT_FNAME[] = "testfile";
+//const char DEFAULT_FNAME[] = "testfile";
+const char DEFAULT_FNAME[] = "/dev/dax0.0";
+static int devdax_size_GB = DEFAULT_SIZE_DEVDAX_GB;
+const char *devdax = "/dev/dax";
+
+static int
+file_is_devdax(const char *filename) {
+	if (strncmp(filename, devdax, strlen(devdax)) == 0)
+		return 1;
+	else
+		return 0;
+}
+	
 
 #define EXIT_MSG(...)			       \
     do {                                       \
@@ -111,7 +124,6 @@ int main(int argc, char **argv) {
 	static struct option long_options[] =
         {
 		/* These options set a flag. */
-		{"createfile", no_argument,  &createfile, 1},
 		{"randomaccess", no_argument,  &randomaccess, 1},
 		{"readmmap", no_argument,   &read_mmap, 1},
 		{"readsyscall", no_argument,  &read_syscall, 1},
@@ -161,47 +173,26 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	/* If the user supplied the createfile flag, they want the test
-	 * to assume that the file does not exist and create a new one.
-	 * in that case, they also must supply the target file size.
-	 * This option can only be supplied if we are doing write tests.
-	 */
-	if (createfile) {
-		if (read_mmap || read_syscall)
-			EXIT_HELP_MSG("Invalid option: --createfile cannot be "
-			       "supplied with --readmmap or -readsyscall "
-			       "optons.\n");
-		if (new_file_size == 0)
-			EXIT_HELP_MSG("If --createfile option is provided, you must "
-				      "also provide the size of the new file as the "
-				      "argument to -s option.\n");
-
-		flags |= O_CREAT | O_APPEND;
-	}
-
 	MSG_NOT_SILENT("Using file %s\n", fname);
+
+	if (new_file_size > 0)
+		devdax_size_GB = new_file_size;
 
 	if ((filesize = get_filesize(fname)) == -1) {
 		if (read_mmap || read_syscall)
 			EXIT_MSG("Cannot obtain file size for %s: %s"
 			       "File must exist prior to running read tests.\n",
 			       fname, strerror(errno));
-		else
-			filesize = new_file_size;
 	}
+
+	if (file_is_devdax(fname) && (read_syscall || write_syscall))
+		EXIT_MSG("Dev-dax mode does not support syscall experiments\n");
 
 	fd = open((const char*)fname, flags, mode);
 	if (fd < 0) {
 		printf("Could not open/create file %s: %s\n",
 		       fname, strerror(errno));
 		_exit(-1);
-	}
-	if (createfile) {
-		ret = ftruncate(fd, filesize);
-		if (ret)
-			EXIT_MSG("Failed to truncate the file to size "
-				 "%" PRIu64 " : %s\n",
-				 (uint_least64_t)filesize, strerror(errno));
 	}
 
 	if (block_size < 0 || block_size > filesize)
@@ -507,7 +498,7 @@ map_buffer(int fd, size_t size) {
 #else /* Assumes Linux 2.6.23 or newer */
 	mmapped_buffer = (char *)mmap(NULL, size,
 				      PROT_READ | PROT_WRITE,
-				      MAP_SHARED, fd, 0);
+				      MAP_SHARED | MAP_POPULATE, fd, 0);
 #endif
 	if (mmapped_buffer == MAP_FAILED)
 		EXIT_MSG("Failed to mmap file of size %" PRIu64 " : %s\n",
@@ -520,8 +511,13 @@ size_t
 get_filesize(const char* filename) {
 
 	int retval;
-
 	struct stat st;
+
+	/* Devdax character device */
+	if (file_is_devdax(filename))
+		return devdax_size_GB * (size_t)BYTES_IN_GB;
+	
+	/* Regular files */
 	retval = stat(filename, &st);
 	if (retval)
 		return -1;
@@ -547,25 +543,19 @@ print_help_message(const char *progname) {
 	printf("  -f, --file[=FILENAME]\n"
 	       "     Perform all tests on this file (defaults to %s).\n",
 	       DEFAULT_FNAME);
-	printf("  --createfilel\n"
-	       "     The test assumes that the file does not exist and will\n"
-	       "     create it. This option is valid only with read tests.\n"
-	       "     If using this option you must also supply the file size\n"
-	       "     as the argument to -s option.\n");
 	printf("  --readsyscall\n"
 	       "     Perform a read test using system calls.\n");
 	printf("  --readmmap\n"
 	       "     Perform a read test using mmap.\n");
+	printf("  --silent\n"
+	       "     Don't print a lot.\n");
+	printf("  --size\n"
+	       "     Size of the area to map in devdax mode.\n"
+	       "     Defaults to %d GB.\n", DEFAULT_SIZE_DEVDAX_GB);
+	printf("  --threads\n"
+	       "     The number of threads to use. Defaults to one.\n");
 	printf("  --writesyscall\n"
 	       "     Perform a write test using system calls.\n");
 	printf("  --writemmap\n"
 	       "     Perform a write test using mmap.\n");
 }
-
-/*
-	if (createfile) {
-
-
-	}
-
-*/
