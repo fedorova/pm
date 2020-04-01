@@ -167,7 +167,7 @@ int main(int argc, char **argv) {
 			print_help_message(argv[0]);
 			_exit(0);
 		case 's':
-			new_file_size = (size_t)(atoi(optarg)) * BYTES_IN_GB;
+			new_file_size = (size_t)atoi(optarg);
 			break;
 		case 't':
 			numthreads = (int) (atoi(optarg));
@@ -181,6 +181,9 @@ int main(int argc, char **argv) {
 
 	if (new_file_size > 0)
 		devdax_size_GB = new_file_size;
+
+	if (file_is_devdax(fname))
+		MSG_NOT_SILENT("Will map area of %dGB\n", devdax_size_GB);
 
 	if ((filesize = get_filesize(fname)) == -1) {
 		if (read_mmap || read_syscall)
