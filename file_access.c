@@ -177,6 +177,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	MSG_NOT_SILENT("pid: %d\n", getpid());
 	MSG_NOT_SILENT("Using file %s\n", fname);
 
 	if (new_file_size > 0)
