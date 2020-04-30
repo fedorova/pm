@@ -38,13 +38,12 @@ then
 fi
 
 # Uncomment for random access tests.
-#ACCESS="--randomaccess"
-echo $ACCESS
+ACCESS="--randomaccess"
 
 if [ "$ACCESS" = "--randomaccess" ]; then
-    echo "Using random access."
+    echo "random access"
 else
-    echo "Using sequential access."
+    echo "sequential access"
 fi
 
 # Uncomment for direct I/O.
