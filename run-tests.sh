@@ -1,7 +1,10 @@
 #!/bin/bash
 
 #FILE=/mnt/data0/sasha/testfile
-FILE=/mnt/pmem/sasha/testfile
+#FILE=/mnt/ssd/sasha/testfile
+#FILE=/mnt/pmem/sasha/testfile
+#FILE=/dev/dax0.0
+FILE=/dev/nvme0n1
 #FILE=/data/sasha/testfile
 #FILE=/altroot/sasha/testfile
 
@@ -38,38 +41,34 @@ fi
 #ACCESS="--randomaccess"
 echo $ACCESS
 
-# Uncomment for creating a new file.
-#CREATE="--createfile"
-# Size in GB
-#SIZE="-s 32"
-#echo $CREATE ${SIZE}GB
+if [ "$ACCESS" = "--randomaccess" ]; then
+    echo "Using random access."
+else
+    echo "Using sequential access."
+fi
 
+# Uncomment for direct I/O.
+#DIRECTIO="-d"
 
-for TEST in readmmap
+if [ "$DIRECTIO" = "-d" ]; then
+    echo "Using direct I/O."
+fi
+
+for TEST in readmmap readsyscall writemmap writesyscall
 #for TEST in readmmap readsyscall writesyscall
 #for TEST in readmmap readsyscall
-#for TEST in readsyscall readmmap
-#for TEST in writemmap writesyscall
 do
     echo ${TEST}
 #    for BLOCK in 512 1024 2048 4096 8192 16384
 #    for BLOCK in 4096 8192 16384
     for BLOCK in 8192
     do
-#	for i in {1..7}
 	for i in {1}
 	do
-#	    for t in 1 2 4 8 16 32 64;
-	    for t in 4;
+	    for t in 1 2 4 8 16 32 64;
 	    do
-		#		drop_caches
-		#		dd < /dev/zero bs=1048576 count=32768 > /mnt/pmem/sasha/testfile
-		./fa -b ${BLOCK} --${TEST} -f ${FILE} ${ACCESS} ${CREATE} ${SIZE} -t $t --silent
-		# If the test needs to create the file each time, delete the file
-		# that the test just creates.
-		if [ -n "$CREATE" ]; then
-		    rm ${FILE}
-		fi
+#		drop_caches
+		./fa -b ${BLOCK} --${TEST} -f ${FILE} ${ACCESS} ${SIZE} -t $t --silent ${DIRECTIO}
 	    done
 	done
     done

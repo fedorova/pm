@@ -1,3 +1,18 @@
+/**
+ * For certain tests, create a file prior to running them.
+ * This command will give you a 4GB:
+ *      $ dd < /dev/zero bs=1048576 count=4096 > testfile
+ *
+ * It will actually allocate space on disk.
+ *
+ * To clear caches, use the following command on Linux:
+ *      # sync; echo 1 > /proc/sys/vm/drop_caches
+ *
+ * To create devdax namespace:
+ * $ sudo ndctl create-namespace --force --reconfig=namespace0.0 \
+ *           --mode=devdax --align=2M
+ */
+
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -24,8 +39,9 @@
 
 //const char DEFAULT_FNAME[] = "testfile";
 const char DEFAULT_FNAME[] = "/dev/dax0.0";
-static int devdax_size_GB = DEFAULT_SIZE_DEVDAX_GB;
+static int static_size_GB = DEFAULT_SIZE_DEVDAX_GB;
 const char *devdax = "/dev/dax";
+const char *devraw = "/dev/nvme";
 
 static int
 file_is_devdax(const char *filename) {
@@ -34,8 +50,15 @@ file_is_devdax(const char *filename) {
 	else
 		return 0;
 }
-	
 
+static int
+file_is_raw(const char *filename) {
+	if (strncmp(filename, devraw, strlen(devraw)) == 0)
+		return 1;
+	else
+		return 0;
+}
+	
 #define EXIT_MSG(...)			       \
     do {                                       \
 	    printf(__VA_ARGS__);	       \
@@ -77,7 +100,6 @@ static int silent = 0;
 typedef struct {
 	int tid;
 	int fd;
-	int createfile;
 	char *mapped_buffer;
 	int read_mmap;
 	int read_syscall;
@@ -91,28 +113,13 @@ typedef struct {
 	uint64_t end_time;
 } threadargs_t;
 
-/**
- * For certain tests, create a file prior to running them.
- * This command will give you a 4GB:
- *      $ dd < /dev/zero bs=1048576 count=4096 > testfile
- *
- * It will actually allocate space on disk.
- *
- * To clear caches, use the following command on Linux:
- *      # sync; echo 1 > /proc/sys/vm/drop_caches
- *
- * To create devdax namespace:
- * $ sudo ndctl create-namespace --force --reconfig=namespace0.0 \
- *           --mode=devdax --align=2M
- */
-
 
 int main(int argc, char **argv) {
 
 	char *fname = (char*) DEFAULT_FNAME;
 	char *mapped_buffer = NULL;
 	int c, fd, flags = O_RDWR, i, numthreads = 1, ret, option_index;
-	static int createfile, randomaccess = 0,
+	static int direct_io, randomaccess = 0,
 		read_mmap = 0, read_syscall = 0,
 		write_mmap = 0, write_syscall = 0;
 	off_t *offsets = 0;
@@ -136,6 +143,7 @@ int main(int argc, char **argv) {
 		{"writesyscall", no_argument,  &write_syscall, 1},
 		/* These options may take an argument. */
 		{"block", required_argument, 0, 'b'},
+		{"directio", no_argument, 0, 'd'},
 		{"file", required_argument, 0, 'f'},
 		{"help", no_argument, 0, 'h'},
 		{"size", no_argument, 0, 's'},
@@ -145,7 +153,7 @@ int main(int argc, char **argv) {
 
 	/* Read long options */
 	while (1) {
-		c = getopt_long (argc, argv, "b:f:hs:t:",
+		c = getopt_long (argc, argv, "b:df:hs:t:",
 				 long_options, &option_index);
 
 		/* Detect the end of the options. */
@@ -159,6 +167,14 @@ int main(int argc, char **argv) {
 			break;
 		case 'b':
 			block_size = atoi(optarg);
+			break;
+		case 'd':
+#ifdef __linux__
+			flags |= O_DIRECT;
+			MSG_NOT_SILENT("Using DIRECT_IO.\n");
+#else
+			printf("Direct I/O not supported.\n");
+#endif
 			break;
 		case 'f':
 			fname = optarg;
@@ -181,10 +197,10 @@ int main(int argc, char **argv) {
 	MSG_NOT_SILENT("Using file %s\n", fname);
 
 	if (new_file_size > 0)
-		devdax_size_GB = new_file_size;
+		static_size_GB = new_file_size;
 
 	if (file_is_devdax(fname))
-		MSG_NOT_SILENT("Will map area of %dGB\n", devdax_size_GB);
+		MSG_NOT_SILENT("Will map area of %dGB\n", static_size_GB);
 
 	if ((filesize = get_filesize(fname)) == -1) {
 		if (read_mmap || read_syscall)
@@ -253,7 +269,6 @@ int main(int argc, char **argv) {
 		threadargs[i].tid = i;
 		threadargs[i].block_size = block_size;
 		threadargs[i].chunk_size = filesize / numthreads;
-		threadargs[i].createfile = createfile;
 		threadargs[i].mapped_buffer = mapped_buffer;
 		threadargs[i].offsets = &offsets[numblocks/numthreads * i];
 		threadargs[i].read_mmap = read_mmap;
@@ -499,14 +514,14 @@ map_buffer(int fd, size_t size) {
 
 	char *mmapped_buffer = NULL;
 
-#ifdef __MACH__
+#ifdef __linux__ /* Assumes Linux 2.6.23 or newer */
 	mmapped_buffer = (char *)mmap(NULL, size,
 				      PROT_READ | PROT_WRITE,
 				      MAP_SHARED, fd, 0);
-#else /* Assumes Linux 2.6.23 or newer */
+#else 
 	mmapped_buffer = (char *)mmap(NULL, size,
 				      PROT_READ | PROT_WRITE,
-				      MAP_SHARED | MAP_POPULATE, fd, 0);
+				      MAP_SHARED, fd, 0);
 #endif
 	if (mmapped_buffer == MAP_FAILED)
 		EXIT_MSG("Failed to mmap file of size %" PRIu64 " : %s\n",
@@ -522,8 +537,8 @@ get_filesize(const char* filename) {
 	struct stat st;
 
 	/* Devdax character device */
-	if (file_is_devdax(filename))
-		return devdax_size_GB * (size_t)BYTES_IN_GB;
+	if (file_is_devdax(filename) || file_is_raw(filename))
+		return static_size_GB * (size_t)BYTES_IN_GB;
 	
 	/* Regular files */
 	retval = stat(filename, &st);
