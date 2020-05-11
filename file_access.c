@@ -41,7 +41,8 @@
 const char DEFAULT_FNAME[] = "/dev/dax0.0";
 static int static_size_GB = DEFAULT_SIZE_DEVDAX_GB;
 const char *devdax = "/dev/dax";
-const char *devraw = "/dev/nvme";
+//const char *devraw = "/dev/nvme";
+const char *devraw = "/dev/pmem0";
 
 static int
 file_is_devdax(const char *filename) {
