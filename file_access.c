@@ -41,8 +41,7 @@
 const char DEFAULT_FNAME[] = "/dev/dax0.0";
 static int static_size_GB = DEFAULT_SIZE_DEVDAX_GB;
 const char *devdax = "/dev/dax";
-//const char *devraw = "/dev/nvme";
-const char *devraw = "/dev/pmem0";
+const char *devraw[3] = {"/dev/nvme", "/dev/pmem0", 0};
 
 static int
 file_is_devdax(const char *filename) {
@@ -54,10 +53,15 @@ file_is_devdax(const char *filename) {
 
 static int
 file_is_raw(const char *filename) {
-	if (strncmp(filename, devraw, strlen(devraw)) == 0)
-		return 1;
-	else
-		return 0;
+
+	const char *str_devraw;
+	int i = 0;
+	
+	while ( (str_devraw = devraw[i++]) != 0) {
+		if (strncmp(filename, str_devraw, strlen(str_devraw)) == 0)
+			return 1;
+	}
+	return 0;
 }
 	
 #define EXIT_MSG(...)			       \
@@ -126,7 +130,7 @@ int main(int argc, char **argv) {
 	off_t *offsets = 0;
 	size_t block_size = DEFAULT_BLOCK_SIZE, filesize, numblocks,
 		new_file_size = 0;
-	uint64_t retval;
+	uint64_t min_start_time, max_end_time = 0, retval;
 
 	pthread_t *threads;
 	threadargs_t *threadargs;
@@ -283,19 +287,23 @@ int main(int argc, char **argv) {
 			EXIT_MSG("pthread_create for %dth thread failed: %s\n",
 			       i, strerror(errno));
 	}
-
+	
 	for (i = 0; i < numthreads; i++) {
 		ret = pthread_join(threads[i], NULL);
 		if (ret != 0)
 			EXIT_MSG("Thread %d failed: %s\n", i, strerror(ret));
 	}
 
-	/*
+	if (write_mmap || write_syscall) {
+		fsync(fd);
+		max_end_time = nano_time();
+	}
+	min_start_time = threadargs[0].start_time;
+
+        /*
 	 * Tally up the running times. Find the smallest start time and
 	 * the largest end time across threads.
 	 */
-	uint64_t min_start_time = threadargs[0].start_time;
-	uint64_t max_end_time = threadargs[0].end_time;
 	for (i = 0; i < numthreads; i++) {
 		min_start_time = (threadargs[i].start_time < min_start_time)?
 			threadargs[i].start_time:min_start_time;

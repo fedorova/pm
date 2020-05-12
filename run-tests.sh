@@ -2,10 +2,10 @@
 
 #FILE=/mnt/data0/sasha/testfile
 #FILE=/mnt/ssd/sasha/testfile
-FILE=/dev/pmem0
+#FILE=/dev/pmem0
 #FILE=/mnt/pmem/sasha/testfile
 #FILE=/dev/dax0.0
-#FILE=/dev/nvme0n1
+FILE=/dev/nvme0n1
 #FILE=/data/sasha/testfile
 #FILE=/altroot/sasha/testfile
 
@@ -68,7 +68,7 @@ do
 	do
 	    for t in 1 2 4 8 16 32 64;
 	    do
-		drop_caches
+#		drop_caches
 		./fa -b ${BLOCK} --${TEST} -f ${FILE} ${ACCESS} ${SIZE} -t $t --silent ${DIRECTIO}
 	    done
 	done
