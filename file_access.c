@@ -294,11 +294,8 @@ int main(int argc, char **argv) {
 			EXIT_MSG("Thread %d failed: %s\n", i, strerror(ret));
 	}
 
-	if (write_mmap || write_syscall) {
-		fsync(fd);
-		max_end_time = nano_time();
-	}
 	min_start_time = threadargs[0].start_time;
+	max_end_time = 0;
 
         /*
 	 * Tally up the running times. Find the smallest start time and
