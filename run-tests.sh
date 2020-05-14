@@ -2,10 +2,10 @@
 
 #FILE=/mnt/data0/sasha/testfile
 #FILE=/mnt/ssd/sasha/testfile
-#FILE=/dev/pmem0
+FILE=/dev/pmem1
 #FILE=/mnt/pmem/sasha/testfile
 #FILE=/dev/dax0.0
-FILE=/dev/nvme0n1
+#FILE=/dev/nvme0n1
 #FILE=/data/sasha/testfile
 #FILE=/altroot/sasha/testfile
 
@@ -29,8 +29,8 @@ PROFILING_RUN=0
 if [ ${PROFILING_RUN} = 1 ]
 then
    echo "Doing a profiling run..."
-   BLOCK=16384
-   TEST=readmmap
+   BLOCK=8192
+   TEST=readsyscall
    echo $FILE $BLOCK $TEST
 
 #   drop_caches  --randomaccess
@@ -54,10 +54,14 @@ if [ "$DIRECTIO" = "-d" ]; then
     echo "Using direct I/O."
 fi
 
+SIZE="-s 32"
+
+echo $SIZE
+
 #for TEST in readmmap readsyscall writemmap writesyscall
-for TEST in writemmap writesyscall
+#for TEST in writemmap writesyscall
 #for TEST in readmmap readsyscall writesyscall
-#for TEST in readmmap readsyscall
+for TEST in readmmap readsyscall
 do
     echo ${TEST}
 #    for BLOCK in 512 1024 2048 4096 8192 16384
