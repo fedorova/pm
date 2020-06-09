@@ -14,6 +14,7 @@ fa: file_access.o nano_time.o
 	$(CC) -o  $@ $^ ${LDDFLAGS}
 
 memcopy: memcopy.c nano_time.o
+	$(CC) -o  $@ $^ ${LDDFLAGS} -lmemkind
 
 %.o : %.c
 	$(CC) $(CXXFLAGS) -c -o $@ $<
