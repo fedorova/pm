@@ -92,6 +92,7 @@ char *allocate_memory(memkindname_t m_kind, size_t size) {
 
     if (m_kind == DRAM) {
 	ptr_default = (char *)memkind_malloc(MEMKIND_DEFAULT, size);
+	return ptr_default;
     }
     else if (m_kind == DAX) {
 	ptr_dax_kmem = (char *)memkind_malloc(MEMKIND_DAX_KMEM_ALL, size);
@@ -100,7 +101,7 @@ char *allocate_memory(memkindname_t m_kind, size_t size) {
     else if (m_kind == FSDAX) {
 
 	struct memkind *pmem_kind = NULL;
-	
+
 	err = memkind_create_pmem(DEFAULT_MEMKIND_PATH, 0, &pmem_kind);
 	if (err)
 	    goto error;
@@ -116,7 +117,7 @@ error:
     return NULL; /* keep the compiler happy */
 }
 
-/* 
+/*
  * If we don't write anything into memory prior to reading it, the kernel
  * figures this out, and we get the throughput as if we are reading from
  * DRAM.
@@ -129,7 +130,8 @@ populate_memory(char *src, size_t size) {
     uint64_t begin_time, end_time;
 
     numblocks = size / DEFAULT_BLOCK_SIZE;
-    printf("Data size: %ld GB\n", (numblocks * (size_t)DEFAULT_BLOCK_SIZE)/(size_t)BYTES_IN_GB);
+    printf("Data size: %ld GB\n", (numblocks * (size_t)DEFAULT_BLOCK_SIZE)/
+	   (size_t)BYTES_IN_GB);
     buffer[0] = 1;
 
     /* Write data to memory */
@@ -139,32 +141,57 @@ populate_memory(char *src, size_t size) {
     }
     end_time = nano_time();
 
-    printf("Write throughput: %.2f GB/s \n", (double)size/(double)(end_time-begin_time)
+    printf("Write throughput: %.2f GB/s \n", (double)size/
+	   (double)(end_time-begin_time)
            * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
 }
+
+#define BEGIN_LAT_SAMPLE			\
+    if (i%LAT_SAMPL_INTERVAL == 0)		\
+	    lat_begin_time = nano_time();
+
+#define END_LAT_SAMPLE				\
+    if (i%LAT_SAMPL_INTERVAL == 0) {					\
+    lat_end_time = nano_time();						\
+    latency_samples[i/LAT_SAMPL_INTERVAL % MAX_LAT_SAMPLES] =		\
+	lat_end_time - lat_begin_time;					\
+	}
 
 void
 copy_memory(char *src, size_t size) {
 
+#define MAX_LAT_SAMPLES 10
+#define LAT_SAMPL_INTERVAL 100
+
     char buffer[DEFAULT_BLOCK_SIZE]; /* Fix this */
     size_t i, numblocks;
-    uint64_t begin_time, end_time, meaningless_sum = 0;
+    uint64_t begin_time, end_time, lat_begin_time, lat_end_time,
+	meaningless_sum = 0;
+    size_t latency_samples[MAX_LAT_SAMPLES];
 
     numblocks = size / DEFAULT_BLOCK_SIZE;
-    printf("Data size: %ld GB\n", (numblocks * (size_t)DEFAULT_BLOCK_SIZE)/(size_t)BYTES_IN_GB);
-    buffer[0] = 1;
+    printf("Data size: %ld GB\n", (numblocks * (size_t)DEFAULT_BLOCK_SIZE)/
+	   (size_t)BYTES_IN_GB);
 
     /* Read data from memory */
     begin_time = nano_time();
     for (i = 0; i < numblocks; i++) {
+
+	BEGIN_LAT_SAMPLE;
 	memcpy(buffer, &src[i * DEFAULT_BLOCK_SIZE], DEFAULT_BLOCK_SIZE);
+	END_LAT_SAMPLE;
 	meaningless_sum += buffer[0];
     }
     end_time = nano_time();
 
-    printf("Read throughput: %.2f GB/s \n", (double)size/(double)(end_time-begin_time)
+    printf("Read throughput: %.2f GB/s \n", (double)size/
+	   (double)(end_time-begin_time)
 	   * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
+
+    printf("\nSample latency for %d byte block:\n", DEFAULT_BLOCK_SIZE);
+    for (i = 0; i < MAX_LAT_SAMPLES; i++)
+	printf("\t%ld: %ld\n", i, latency_samples[i]);
 
     printf("%ld\n", meaningless_sum);
 }
-    
+
