@@ -11,7 +11,7 @@
 const char DEFAULT_MEMKIND_PATH[] = "/mnt/pmem/sasha";
 
 #define BYTES_IN_GB (1024 * 1024 * 1024)
-#define DEFAULT_BUFFER_SIZE 4096
+#define DEFAULT_BLOCK_SIZE 4096
 #define DEFAULT_SIZE_GB 32
 #define NANOSECONDS_IN_SECOND 1000000000
 
@@ -47,13 +47,15 @@ print_help_message(const char *progname) {
 typedef enum state {DRAM, DAX, FSDAX} memkindname_t;
 
 char *allocate_memory(memkindname_t kind, size_t size);
-void  copy_memory(char *buf, size_t size); 
+void  copy_memory(char *buf, size_t size);
+void  populate_memory(char *buf, size_t size);
 
 int main(int argc, char **argv) {
 
     char *buf;
     memkindname_t mem_name;
-    
+    size_t size = 0;
+
     if (argc < 2)
 	EXIT_HELP_MSG("Missing memory kind.\n");
 
@@ -71,11 +73,15 @@ int main(int argc, char **argv) {
 	EXIT_HELP_MSG("Invalid memory kind.\n");
     }
 
-    buf = allocate_memory(mem_name, DEFAULT_SIZE_GB);
+    size = (size_t)DEFAULT_SIZE_GB * (size_t)BYTES_IN_GB;
+    buf = allocate_memory(mem_name, size);
     if (buf == NULL)
 	EXIT_MSG("Could not allocate memory.\n");
-      
-    copy_memory(buf, DEFAULT_SIZE_GB);
+
+    populate_memory(buf, size);
+
+    for (int i = 0; i < 10; i++)
+	copy_memory(buf, size);
 }
 
 char *allocate_memory(memkindname_t m_kind, size_t size) {
@@ -110,10 +116,55 @@ error:
     return NULL; /* keep the compiler happy */
 }
 
+/* 
+ * If we don't write anything into memory prior to reading it, the kernel
+ * figures this out, and we get the throughput as if we are reading from
+ * DRAM.
+ */
 void
-copy_memory(char *buf, size_t size) {
+populate_memory(char *src, size_t size) {
 
+    char buffer[DEFAULT_BLOCK_SIZE]; /* Fix this */
+    size_t i, numblocks;
+    uint64_t begin_time, end_time;
 
+    numblocks = size / DEFAULT_BLOCK_SIZE;
+    printf("Data size: %ld GB\n", (numblocks * (size_t)DEFAULT_BLOCK_SIZE)/(size_t)BYTES_IN_GB);
+    buffer[0] = 1;
 
+    /* Write data to memory */
+    begin_time = nano_time();
+    for (i = 0; i < numblocks; i++) {
+        memcpy(&src[i * DEFAULT_BLOCK_SIZE], buffer, DEFAULT_BLOCK_SIZE);
+    }
+    end_time = nano_time();
+
+    printf("Write throughput: %.2f GB/s \n", (double)size/(double)(end_time-begin_time)
+           * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
+}
+
+void
+copy_memory(char *src, size_t size) {
+
+    char buffer[DEFAULT_BLOCK_SIZE]; /* Fix this */
+    size_t i, numblocks;
+    uint64_t begin_time, end_time, meaningless_sum = 0;
+
+    numblocks = size / DEFAULT_BLOCK_SIZE;
+    printf("Data size: %ld GB\n", (numblocks * (size_t)DEFAULT_BLOCK_SIZE)/(size_t)BYTES_IN_GB);
+    buffer[0] = 1;
+
+    /* Read data from memory */
+    begin_time = nano_time();
+    for (i = 0; i < numblocks; i++) {
+	memcpy(buffer, &src[i * DEFAULT_BLOCK_SIZE], DEFAULT_BLOCK_SIZE);
+	meaningless_sum += buffer[0];
+    }
+    end_time = nano_time();
+
+    printf("Read throughput: %.2f GB/s \n", (double)size/(double)(end_time-begin_time)
+	   * NANOSECONDS_IN_SECOND / BYTES_IN_GB);
+
+    printf("%ld\n", meaningless_sum);
 }
     
