@@ -56,14 +56,14 @@ file_is_raw(const char *filename) {
 
 	const char *str_devraw;
 	int i = 0;
-	
+
 	while ( (str_devraw = devraw[i++]) != 0) {
 		if (strncmp(filename, str_devraw, strlen(str_devraw)) == 0)
 			return 1;
 	}
 	return 0;
 }
-	
+
 #define EXIT_MSG(...)			       \
     do {                                       \
 	    printf(__VA_ARGS__);	       \
@@ -117,7 +117,6 @@ typedef struct {
 	uint64_t start_time;
 	uint64_t end_time;
 } threadargs_t;
-
 
 int main(int argc, char **argv) {
 
@@ -287,7 +286,7 @@ int main(int argc, char **argv) {
 			EXIT_MSG("pthread_create for %dth thread failed: %s\n",
 			       i, strerror(errno));
 	}
-	
+
 	for (i = 0; i < numthreads; i++) {
 		ret = pthread_join(threads[i], NULL);
 		if (ret != 0)
@@ -328,23 +327,28 @@ run_tests(void *args) {
 					   &((threadargs_t*)args)->start_time,
 					   &((threadargs_t*)args)->end_time);
 
-		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n", retval);
+		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n",
+			       retval);
 	}
 	if (t.read_syscall) {
 		MSG_NOT_SILENT("Running readsyscall test:\n");
-		retval = do_read_syscall_test(t.fd, t.tid, t.block_size, t.chunk_size,
+		retval = do_read_syscall_test(t.fd, t.tid, t.block_size,
+					      t.chunk_size,
 					      t.offsets,
 					      &((threadargs_t*)args)->start_time,
 					      &((threadargs_t*)args)->end_time);
-		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n", retval);
+		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n",
+			       retval);
 	}
 	if (t.write_mmap) {
 		MSG_NOT_SILENT("Running writemmap test:\n");
-		retval = do_write_mmap_test(t.fd, t.tid, t.block_size, t.chunk_size,
+		retval = do_write_mmap_test(t.fd, t.tid, t.block_size,
+					    t.chunk_size,
 					    t.mapped_buffer, t.offsets,
 					    &((threadargs_t*)args)->start_time,
 					    &((threadargs_t*)args)->end_time);
-		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n", retval);
+		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n",
+			       retval);
 	}
 	if (t.write_syscall) {
 		MSG_NOT_SILENT("Running writesyscall test:\n");
@@ -352,7 +356,8 @@ run_tests(void *args) {
 					       t.chunk_size, t.offsets,
 					       &((threadargs_t*)args)->start_time,
 					       &((threadargs_t*)args)->end_time);
-		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n", retval);
+		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n",
+			       retval);
 	}
 	return (void*) 0;
 }
@@ -447,28 +452,47 @@ do_syscall_test(int fd, int tid, size_t block_size, size_t filesize, char optype
  */
 
 uint64_t
-do_read_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char *buf,
-		  off_t *offsets, uint64_t *begin, uint64_t *end) {
+do_read_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
+		  char *buf, off_t *offsets, uint64_t *begin, uint64_t *end) {
 
-	return do_mmap_test(fd, tid, block_size, filesize, buf, READ, offsets,
-			    begin, end);
+    return do_mmap_test(fd, tid, block_size, filesize, buf, READ, offsets,
+			begin, end);
 }
 
 uint64_t
-do_write_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char *buf,
-		   off_t *offsets, uint64_t *begin, uint64_t *end) {
+do_write_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
+		   char *buf, off_t *offsets, uint64_t *begin, uint64_t *end){
 
-	return do_mmap_test(fd, tid, block_size, filesize, buf, WRITE, offsets,
-			    begin, end);
+    return do_mmap_test(fd, tid, block_size, filesize, buf, WRITE, offsets,
+			begin, end);
 }
 
+#define BEGIN_LAT_SAMPLE			\
+    if (i%LAT_SAMPL_INTERVAL == 0)		\
+	    lat_begin_time = nano_time();
+
+#define END_LAT_SAMPLE				\
+    if (i%LAT_SAMPL_INTERVAL == 0) {					\
+    lat_end_time = nano_time();						\
+    latency_samples[i/LAT_SAMPL_INTERVAL % MAX_LAT_SAMPLES] =		\
+	lat_end_time - lat_begin_time;					\
+	}
+
+#define MAX_LAT_SAMPLES 10
+#define LAT_SAMPL_INTERVAL 1048576
+
 uint64_t
-do_mmap_test(int fd, int tid, size_t block_size, size_t size, char *mmapped_buffer,
-	     char optype, off_t *offsets,uint64_t *begin, uint64_t *end)
+do_mmap_test(int fd, int tid, size_t block_size, size_t size,
+	     char *mmapped_buffer, char optype, off_t *offsets,
+	     uint64_t *begin, uint64_t *end)
 {
 	char *buffer = NULL;
 	uint64_t i, j, numblocks, ret;
 	uint64_t begin_time, end_time, ret_token = 0;
+	uint64_t lat_begin_time, lat_end_time;
+	size_t latency_samples[MAX_LAT_SAMPLES];
+
+	memset((void*)latency_samples, 0, sizeof(latency_samples));
 
 	buffer = (char*)malloc(block_size);
 	if (buffer == NULL) {
@@ -488,6 +512,7 @@ do_mmap_test(int fd, int tid, size_t block_size, size_t size, char *mmapped_buff
 	 */
 	for (i = 0; i < size; i+=block_size) {
 		off_t offset = offsets[i/block_size];
+		BEGIN_LAT_SAMPLE;
 		if (optype == READ) {
 			memcpy(buffer, &mmapped_buffer[offset],
 			       block_size);
@@ -498,6 +523,7 @@ do_mmap_test(int fd, int tid, size_t block_size, size_t size, char *mmapped_buff
 			       block_size);
 			ret_token += mmapped_buffer[i];
 		}
+		END_LAT_SAMPLE;
 	}
 
 	end_time = nano_time();
@@ -511,6 +537,11 @@ do_mmap_test(int fd, int tid, size_t block_size, size_t size, char *mmapped_buff
 
 	*begin = begin_time;
 	*end   = end_time;
+
+	printf("\nSample latency for %ld byte block:\n", block_size);
+	for (i = 0; i < MAX_LAT_SAMPLES; i++)
+	    printf("\t%ld: %ld\n", i, latency_samples[i]);
+
 
 	return ret_token;
 }
