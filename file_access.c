@@ -455,6 +455,8 @@ uint64_t
 do_read_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
 		  char *buf, off_t *offsets, uint64_t *begin, uint64_t *end) {
 
+    do_mmap_test(fd, tid, block_size, filesize, buf, READ, offsets,
+		 begin, end);
     return do_mmap_test(fd, tid, block_size, filesize, buf, READ, offsets,
 			begin, end);
 }
@@ -468,15 +470,16 @@ do_write_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
 }
 
 #define BEGIN_LAT_SAMPLE			\
-    if (i%LAT_SAMPL_INTERVAL == 0)		\
+    if (num_samples < 10 && i%LAT_SAMPL_INTERVAL == 0)	\
 	    lat_begin_time = nano_time();
 
 #define END_LAT_SAMPLE				\
-    if (i%LAT_SAMPL_INTERVAL == 0) {					\
-    lat_end_time = nano_time();						\
-    latency_samples[i/LAT_SAMPL_INTERVAL % MAX_LAT_SAMPLES] =		\
-	lat_end_time - lat_begin_time;					\
-	}
+    if (num_samples < 10 && i%LAT_SAMPL_INTERVAL == 0) {		\
+	lat_end_time = nano_time();					\
+	latency_samples[i/LAT_SAMPL_INTERVAL % MAX_LAT_SAMPLES] =	\
+	    lat_end_time - lat_begin_time;				\
+	num_samples++;							\
+    }
 
 #define MAX_LAT_SAMPLES 10
 #define LAT_SAMPL_INTERVAL 1048576
@@ -491,6 +494,7 @@ do_mmap_test(int fd, int tid, size_t block_size, size_t size,
 	uint64_t begin_time, end_time, ret_token = 0;
 	uint64_t lat_begin_time, lat_end_time;
 	size_t latency_samples[MAX_LAT_SAMPLES];
+	int num_samples = 0;
 
 	memset((void*)latency_samples, 0, sizeof(latency_samples));
 
