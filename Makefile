@@ -8,9 +8,12 @@ OBJ_FILES := $(SRC_FILES:.c=.o)
 
 .PHONY: all clean
 
-all: fa memcopy
+all: fa memcopy ht
 
 fa: file_access.o nano_time.o
+	$(CC) -o  $@ $^ ${LDDFLAGS}
+
+ht: hash_table.o nano_time.o
 	$(CC) -o  $@ $^ ${LDDFLAGS}
 
 memcopy: memcopy.c nano_time.o
