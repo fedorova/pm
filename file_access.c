@@ -33,11 +33,10 @@
 #include "nano_time.h"
 
 #define BYTES_IN_GB (1024 * 1024 * 1024)
-#define DEFAULT_BLOCK_SIZE 4096
+#define DEFAULT_BLOCK_SIZE 8192
 #define DEFAULT_SIZE_DEVDAX_GB 32
 #define NANOSECONDS_IN_SECOND 1000000000
 
-//const char DEFAULT_FNAME[] = "testfile";
 const char DEFAULT_FNAME[] = "/dev/dax0.0";
 static int static_size_GB = DEFAULT_SIZE_DEVDAX_GB;
 const char *devdax = "/dev/dax";
@@ -326,9 +325,6 @@ run_tests(void *args) {
 					   t.mapped_buffer, t.offsets,
 					   &((threadargs_t*)args)->start_time,
 					   &((threadargs_t*)args)->end_time);
-
-		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n",
-			       retval);
 	}
 	if (t.read_syscall) {
 		MSG_NOT_SILENT("Running readsyscall test:\n");
@@ -337,8 +333,6 @@ run_tests(void *args) {
 					      t.offsets,
 					      &((threadargs_t*)args)->start_time,
 					      &((threadargs_t*)args)->end_time);
-		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n",
-			       retval);
 	}
 	if (t.write_mmap) {
 		MSG_NOT_SILENT("Running writemmap test:\n");
@@ -347,8 +341,6 @@ run_tests(void *args) {
 					    t.mapped_buffer, t.offsets,
 					    &((threadargs_t*)args)->start_time,
 					    &((threadargs_t*)args)->end_time);
-		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n",
-			       retval);
 	}
 	if (t.write_syscall) {
 		MSG_NOT_SILENT("Running writesyscall test:\n");
@@ -356,8 +348,6 @@ run_tests(void *args) {
 					       t.chunk_size, t.offsets,
 					       &((threadargs_t*)args)->start_time,
 					       &((threadargs_t*)args)->end_time);
-		MSG_NOT_SILENT("\t Meaningless return token: %" PRIu64 "\n",
-			       retval);
 	}
 	return (void*) 0;
 }
@@ -455,8 +445,6 @@ uint64_t
 do_read_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
 		  char *buf, off_t *offsets, uint64_t *begin, uint64_t *end) {
 
-    do_mmap_test(fd, tid, block_size, filesize, buf, READ, offsets,
-		 begin, end);
     return do_mmap_test(fd, tid, block_size, filesize, buf, READ, offsets,
 			begin, end);
 }
@@ -469,6 +457,7 @@ do_write_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
 			begin, end);
 }
 
+#if SAMPLE_LATENCY
 #define BEGIN_LAT_SAMPLE			\
     if (num_samples < 10 && i%LAT_SAMPL_INTERVAL == 0)	\
 	    lat_begin_time = nano_time();
@@ -484,6 +473,13 @@ do_write_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
 #define MAX_LAT_SAMPLES 10
 #define LAT_SAMPL_INTERVAL 1048576
 
+#else
+
+#define BEGIN_LAT_SAMPLE ;
+#define END_LAT_SAMPLE
+
+#endif
+
 uint64_t
 do_mmap_test(int fd, int tid, size_t block_size, size_t size,
 	     char *mmapped_buffer, char optype, off_t *offsets,
@@ -492,11 +488,13 @@ do_mmap_test(int fd, int tid, size_t block_size, size_t size,
 	char *buffer = NULL;
 	uint64_t i, j, numblocks, ret;
 	uint64_t begin_time, end_time, ret_token = 0;
+#if SAMPLE_LATENCY
 	uint64_t lat_begin_time, lat_end_time;
 	size_t latency_samples[MAX_LAT_SAMPLES];
 	int num_samples = 0;
 
 	memset((void*)latency_samples, 0, sizeof(latency_samples));
+#endif
 
 	buffer = (char*)malloc(block_size);
 	if (buffer == NULL) {
@@ -542,10 +540,11 @@ do_mmap_test(int fd, int tid, size_t block_size, size_t size,
 	*begin = begin_time;
 	*end   = end_time;
 
+#if SAMPLE_LATENCY
 	printf("\nSample latency for %ld byte block:\n", block_size);
 	for (i = 0; i < MAX_LAT_SAMPLES; i++)
 	    printf("\t%ld: %ld\n", i, latency_samples[i]);
-
+#endif
 
 	return ret_token;
 }
@@ -559,7 +558,7 @@ map_buffer(int fd, size_t size) {
 	mmapped_buffer = (char *)mmap(NULL, size,
 				      PROT_READ | PROT_WRITE,
 				      MAP_SHARED, fd, 0);
-#else 
+#else
 	mmapped_buffer = (char *)mmap(NULL, size,
 				      PROT_READ | PROT_WRITE,
 				      MAP_SHARED, fd, 0);
