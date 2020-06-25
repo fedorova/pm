@@ -159,8 +159,37 @@ void *ht_put(hashtable_t *ht_ptr, size_t key, size_t size) {
     return htb_new->htb_value_address;
 }
 
-void ht_remove(size_t key, size_t size) {
+void ht_remove(hashtable_t *ht_ptr, size_t key, size_t size) {
 
+    ht_bucket_t *htb, *htb_prev = NULL, *htb_new;
+
+    htb = &ht_ptr->ht_buckets[key % ht_ptr->ht_size];
+
+    while(htb != NULL) {
+	if (htb->htb_key == key) {
+	    if (htb->htb_value_size != size)
+		EXIT_MSG("Found key, unmatched size: key %zu, "
+			 "hashbtable size: %zu, new item size: %zu\n",
+			 key, htb->htb_value_size, size);
+	    else{ /* Remove */
+		FREE(htb->htb_value_address);
+		if (htb_prev == NULL) { /* first item in chain */
+		    htb->htb_key = 0;
+		    htb->htb_value_size = 0;
+		    htb->htb_value_address = 0;
+		}
+		else {
+		    htb_prev->htb_next = htb->htb_next;
+		    FREE(htb);
+		}
+		return;
+	    }
+	}
+	htb_prev = htb;
+	htb = htb->htb_next;
+    }
+    printf("Remove can't find requested item: key %zu, size %zu\n",
+	   key, size);
 }
 
 void ht_bucket_print(ht_bucket_t *htb, size_t idx) {
@@ -195,7 +224,7 @@ int main(void) {
 
     ht_item_t *items_put;
     int i, num_items = 26;
-    size_t key, size;
+    size_t key, size, ret_size;
     void *addr;
 
     /*
@@ -228,15 +257,24 @@ int main(void) {
 
     /* Check that they are there */
     for (i = 0; i < num_items; i++) {
-	size_t ret_size;
-
 	addr = ht_get(ht, items_put[i].key, &ret_size);
 	if (addr == NULL || (items_put[i].size != ret_size))
-	    printf("Expected item %ld or size %ld not found.\n",
+	    printf("Expected item %ld of size %ld not found.\n",
 		   items_put[i].key, items_put[i].size);
     }
 
     printf("\n\nHASHTABLE:\n");
     hashtable_print(ht);
 
+    /* Remove all items */
+    for (i = 0; i < num_items; i++) {
+	ht_remove(ht, items_put[i].key, items_put[i].size);
+
+	if (ht_get(ht, items_put[i].key, &ret_size) != NULL)
+	    printf("Removed item (key: %ld, size: %ld) was found.\n",
+		   items_put[i].key, items_put[i].size);
+    }
+
+    printf("\n\nHASHTABLE:\n");
+    hashtable_print(ht);
 }
