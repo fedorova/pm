@@ -16,8 +16,6 @@
 #define HASHTABLE_NUM_BUCKETS 4*1024*1024
 #define NANOSECONDS_IN_SECOND 1000000000
 
-size_t ht_size;
-
 void
 print_help_message(const char *progname) {
 
@@ -42,11 +40,16 @@ print_help_message(const char *progname) {
             _exit(-1);                         \
     } while (0)
 
+/* Use macros, so we can easily replace allocators */
+#define ALLOC_DATA(size) malloc(size)
+#define ALLOC_METADATA(size) malloc(size)
+
+#define FREE(ptr) free(ptr)
 
 typedef struct ht_bucket {
-    size_t  htb_offset;
-    size_t htb_size;
-    void*  htb_memory_address;
+    size_t htb_key;
+    size_t htb_value_size;
+    void*  htb_value_address;
     struct ht_bucket *htb_next;
 } ht_bucket_t;
 
@@ -58,108 +61,182 @@ typedef struct {
 hashtable_t *ht_allocate(size_t num_items) {
 
     hashtable_t *ht_ptr;
-    ht_bucket_t *htb_ptr;
+    ht_bucket_t *ht_buckets;
 
-    htb_ptr = (ht_bucket_t *)malloc(sizeof(ht_bucket_t) * num_items);
-    if (htb_ptr == NULL)
+    ht_buckets = (ht_bucket_t *)ALLOC_METADATA(sizeof(ht_bucket_t) * num_items);
+    if (ht_buckets == NULL)
 	return NULL;
 
-    memset(htb_ptr, 0, sizeof(ht_bucket_t) * num_items);
+    memset(ht_buckets, 0, sizeof(ht_bucket_t) * num_items);
 
-    ht_ptr = (hashtable_t *)malloc(sizeof(hashtable_t));
+    ht_ptr = (hashtable_t *)ALLOC_METADATA(sizeof(hashtable_t));
     if (ht_ptr == NULL) {
-	free(htb_ptr);
+	FREE(ht_buckets);
 	return NULL;
     }
 
     ht_ptr->ht_size = num_items;
-    ht_ptr->ht_buckets = htb_ptr;
+    ht_ptr->ht_buckets = ht_buckets;
 
     return ht_ptr;
 }
 
-void *ht_get(hashtable_t *ht_ptr, size_t offset, size_t *size) {
+void *ht_get(hashtable_t *ht_ptr, size_t key, size_t *size) {
 
     ht_bucket_t *htb;
-    size_t size;
 
-    size = ht_ptr->ht_size;
-    htb = ht_ptr->ht_buckets[offset % size];
+    htb = &ht_ptr->ht_buckets[key % ht_ptr->ht_size];
 
     /*
      * Traverse the linked list in the bucket until we find the
-     * items with the requested offset.
+     * items with the requested key.
      */
     while(htb != NULL) {
-	if (htb->offset == offset) {
-	    *size = htb->size;
-	    return htb->htb_memory_address;
+	if (htb->htb_key == key) {
+	    *size = htb->htb_value_size;
+	    return htb->htb_value_address;
 	}
-	htb = htb->next;
+	htb = htb->htb_next;
     }
-
     *size = 0;
     return NULL;
 }
 
-void *ht_put(hashtable_t *ht_ptr, off_t offset, size_t size) {
+void *ht_put(hashtable_t *ht_ptr, size_t key, size_t size) {
 
     ht_bucket_t *htb, *htb_prev = NULL, *htb_new;
 
-    htb = ht_ptr->ht_buckets[offset % ht_ptr->size];
+    htb = &ht_ptr->ht_buckets[key % ht_ptr->ht_size];
 
     /*
      * Find the empty bucket in the hashtable
      */
     while(htb != NULL) {
-	if (htb->offset == offset) {
-	    if (htb->size == size) {
-		printf("Duplicate item: offset %lld, size %lld\n", offset, size);
-		return htb->htb_memory_address;
+	if (htb->htb_key == key) {
+	    if (htb->htb_value_size == size) {
+		printf("Duplicate item: key %zu, size %zu\n", key, size);
+		return htb->htb_value_address;
 	    }
-	    else
-		EXIT_MSG("Duplicate offset, unmatched size: offset %lld, "
-			 "hashbtable size: %lld, new item size: %lld\n",
-			 offset, htb->size, size);
-	    return htb->htb_memory_address;
+	    else {
+		EXIT_MSG("Duplicate key, unmatched size: key %zu, "
+			 "hashbtable size: %zu, new item size: %zu\n",
+			 key, htb->htb_value_size, size);
+		return NULL; /* Keep the compiler happy */
+	    }
 	}
-	else if(htb->offset == 0) {
-	    htb->htb_memory_address = malloc(size);
-	    if (htb->htb_memory_address == NULL)
-		EXIT_MSG("Could not allocate %lld bytes of memory\n", size);
-	    htb->htb_offset = offset;
-	    htb->htb_size = size;
-	    return htb->htb_memory_address;
+	else if(htb->htb_key == 0) {
+	    /* Allocate space for the value */
+	    htb->htb_value_address = ALLOC_DATA(size);
+	    if (htb->htb_value_address == NULL)
+		return NULL;
+
+	    htb->htb_key = key;
+	    htb->htb_value_size = size;
+	    return htb->htb_value_address;
 	}
 	else {
 	    htb_prev = htb;
-	    htb = htb->next;
+	    htb = htb->htb_next;
 	}
     }
 
-    /* Allocate a new item */
-    htb_new = (ht_bucket_t*)malloc(sizeof(ht_bucket_t));
+    /* Allocate a new bucket in the chain */
+    htb_new = (ht_bucket_t*)ALLOC_METADATA(sizeof(ht_bucket_t));
     if (htb_new == NULL)
-	EXIT_MSG("Could not allocate %lld bytes of memory\n", sizeof(ht_bucket_t));
+	return NULL;
 
-    htb_new->htb_memory_address = malloc(size);
-    if (htb_new->htb_memory_address == NULL) {
-	    free(htb_new);
-	    return NULL;
+    htb_new->htb_value_address = ALLOC_DATA(size);
+    if (htb_new->htb_value_address == NULL) {
+	FREE(htb_new);
+	return NULL;
     }
-    htb_new->offset = offset;
-    htb_new->size = size;
+    htb_new->htb_key = key;
+    htb_new->htb_value_size = size;
     htb_new->htb_next = NULL;
 
     htb_prev->htb_next = htb_new;
 
-    return htb_new->htb_memory_address;
+    return htb_new->htb_value_address;
 }
 
-void ht_remove(size_t offset, size_t size) {
+void ht_remove(size_t key, size_t size) {
 
 }
 
-void hashtable_print() {
+void ht_bucket_print(ht_bucket_t *htb, size_t idx) {
+
+    printf("Bucket %ld: \n", idx);
+    while (htb != NULL) {
+	printf("\t Key = %ld, value_address = %p, size = %ld\n",
+	       htb->htb_key, htb->htb_value_address, htb->htb_value_size);
+     	htb = htb->htb_next;
+    }
+    printf("\n");
+}
+
+void hashtable_print(hashtable_t *ht_ptr) {
+
+    size_t i;
+
+    for (i = 0; i < ht_ptr->ht_size; i++)
+	ht_bucket_print(&ht_ptr->ht_buckets[i], i);
+}
+
+
+#define MAX_KEY 1024
+#define MAX_SIZE 4096
+
+typedef struct {
+    size_t key;
+    size_t size;
+} ht_item_t;
+
+int main(void) {
+
+    ht_item_t *items_put;
+    int i, num_items = 26;
+    size_t key, size;
+    void *addr;
+
+    /*
+     * Allocate the space to remember the keys and sizes we add
+     * to the hashtable.
+     */
+    items_put = (ht_item_t *)malloc(num_items * sizeof(ht_item_t));
+    if (items_put == NULL)
+	EXIT_MSG("Could not allocate items array of %d items.\n", num_items);
+
+    hashtable_t *ht = ht_allocate(num_items);
+    if (ht == NULL)
+	EXIT_MSG("Could not allocate hash table of %d items.\n", num_items);
+
+    /* Put a bunch of items */
+    printf("The following items have been put:\n");
+    for (i = 0; i < num_items; i++) {
+	key = random() % MAX_KEY;
+	size = random() % MAX_SIZE;
+
+	addr = ht_put(ht, key, size);
+	if (addr == NULL)
+	    EXIT_MSG("ht_put failed for value size %ld\n", size);
+
+	items_put[i].key = key;
+	items_put[i].size = size;
+
+	printf("\t [%d] key: %ld, size: %ld\n", i, items_put[i].key, items_put[i].size);
+    }
+
+    /* Check that they are there */
+    for (i = 0; i < num_items; i++) {
+	size_t ret_size;
+
+	addr = ht_get(ht, items_put[i].key, &ret_size);
+	if (addr == NULL || (items_put[i].size != ret_size))
+	    printf("Expected item %ld or size %ld not found.\n",
+		   items_put[i].key, items_put[i].size);
+    }
+
+    printf("\n\nHASHTABLE:\n");
+    hashtable_print(ht);
 
 }
