@@ -52,13 +52,15 @@ const char DEFAULT_MEMKIND_PATH[] = "/mnt/pmem/sasha";
 
 #define ALLOC_DATA(size) memkind_malloc(pmem_kind, size)
 #define ALLOC_METADATA(size) memkind_malloc(pmem_kind, size)
-#define FREE(ptr) memkind_free(pmem_kind, ptr)
+#define FREE_DATA(ptr) memkind_free(pmem_kind, ptr)
+#define FREE_METADATA(ptr) memkind_free(pmem_kind, ptr)
 
 #else
 
 #define ALLOC_DATA(size) malloc(size)
 #define ALLOC_METADATA(size) malloc(size)
 #define FREE(ptr) free(ptr)
+#define FREE_METADATA(ptr) free(ptr)
 
 #endif
 
@@ -88,7 +90,7 @@ hashtable_t *ht_allocate(size_t num_items) {
 
     ht_ptr = (hashtable_t *)ALLOC_METADATA(sizeof(hashtable_t));
     if (ht_ptr == NULL) {
-	FREE(ht_buckets);
+	FREE_METADATA(ht_buckets);
 	return NULL;
     }
 
@@ -130,22 +132,15 @@ void *ht_put(hashtable_t *ht_ptr, size_t key, size_t size) {
      */
     while(htb != NULL) {
 	if (htb->htb_key == key) {
-	    if (htb->htb_value_size == size) {
-		printf("Duplicate item: key %zu, size %zu\n", key, size);
-		return htb->htb_value_address;
-	    }
-	    else {
-		EXIT_MSG("Duplicate key, unmatched size: key %zu, "
-			 "hashbtable size: %zu, new item size: %zu\n",
-			 key, htb->htb_value_size, size);
-		return NULL; /* Keep the compiler happy */
-	    }
+	    /* We don't allow duplicate keys for now */
+	    return NULL;
 	}
 	else if(htb->htb_key == 0) {
 	    /* Allocate space for the value */
 	    htb->htb_value_address = ALLOC_DATA(size);
 	    if (htb->htb_value_address == NULL)
-		return NULL;
+		EXIT_MSG("Could not allocate %ld bytes: %s\n",
+			 size, strerror(errno));
 
 	    htb->htb_key = key;
 	    htb->htb_value_size = size;
@@ -164,7 +159,7 @@ void *ht_put(hashtable_t *ht_ptr, size_t key, size_t size) {
 
     htb_new->htb_value_address = ALLOC_DATA(size);
     if (htb_new->htb_value_address == NULL) {
-	FREE(htb_new);
+	FREE_METADATA(htb_new);
 	return NULL;
     }
     htb_new->htb_key = key;
@@ -189,7 +184,7 @@ void ht_remove(hashtable_t *ht_ptr, size_t key, size_t size) {
 			 "hashbtable size: %zu, new item size: %zu\n",
 			 key, htb->htb_value_size, size);
 	    else{ /* Remove */
-		FREE(htb->htb_value_address);
+		FREE_DATA(htb->htb_value_address);
 		if (htb_prev == NULL) { /* first item in chain */
 		    htb->htb_key = 0;
 		    htb->htb_value_size = 0;
@@ -197,7 +192,7 @@ void ht_remove(hashtable_t *ht_ptr, size_t key, size_t size) {
 		}
 		else {
 		    htb_prev->htb_next = htb->htb_next;
-		    FREE(htb);
+		    FREE_METADATA(htb);
 		}
 		return;
 	    }
@@ -229,8 +224,8 @@ void hashtable_print(hashtable_t *ht_ptr) {
 }
 
 
-#define MAX_KEY 1024
-#define MAX_SIZE 4096
+#define MAX_KEY 1000000
+#define MAX_SIZE 32768
 
 typedef struct {
     size_t key;
@@ -240,9 +235,10 @@ typedef struct {
 int main(void) {
 
     ht_item_t *items_put;
-    int i, num_items = 26;
+    int i, num_items = 1024;
     size_t key, size, ret_size;
     void *addr;
+    uint64_t begin_time, end_time;
 
 #if FSDAX
     if (memkind_create_pmem(DEFAULT_MEMKIND_PATH, 0, &pmem_kind) != 0)
@@ -261,27 +257,34 @@ int main(void) {
 	EXIT_MSG("Could not allocate hash table of %d items.\n", num_items);
 
     /* Put a bunch of items */
-    printf("The following items have been put:\n");
+    printf("Putting the following items:\n");
+    begin_time = nano_time();
     for (i = 0; i < num_items; i++) {
 	key = random() % MAX_KEY;
 	size = random() % MAX_SIZE;
 
 	addr = ht_put(ht, key, size);
-	if (addr == NULL)
-	    EXIT_MSG("ht_put failed for value size %ld\n", size);
+	/* Duplicate key not allowed. Try again */
+	if (addr == NULL) {
+	    i--;
+	    continue;
+	}
 
 	items_put[i].key = key;
 	items_put[i].size = size;
-
-	printf("\t [%d] key: %ld, size: %ld\n", i, items_put[i].key, items_put[i].size);
     }
+    end_time = nano_time();
+    printf("Put time for %d items is %ld ns\n", num_items,
+	   (end_time - begin_time));
 
     /* Check that they are there */
     for (i = 0; i < num_items; i++) {
 	addr = ht_get(ht, items_put[i].key, &ret_size);
+	printf("\t [%d] key: %ld, size: %ld\n", i, items_put[i].key,
+	       items_put[i].size);
 	if (addr == NULL || (items_put[i].size != ret_size))
-	    printf("Expected item %ld of size %ld not found.\n",
-		   items_put[i].key, items_put[i].size);
+	    EXIT_MSG("Expected item %ld of size %ld not found.\n",
+		     items_put[i].key, items_put[i].size);
     }
 
     printf("\n\nHASHTABLE:\n");
