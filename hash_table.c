@@ -41,10 +41,27 @@ print_help_message(const char *progname) {
     } while (0)
 
 /* Use macros, so we can easily replace allocators */
+#define FSDAX 1
+
+#if FSDAX
+struct memkind *pmem_kind = NULL;
+
+const char DEFAULT_MEMKIND_PATH[] = "/mnt/pmem/sasha";
+#define BYTES_IN_GB (1024 * 1024 * 1024)
+#define DEFAULT_SIZE_GB 32
+
+#define ALLOC_DATA(size) memkind_malloc(pmem_kind, size)
+#define ALLOC_METADATA(size) malloc(size)
+#define FREE(ptr) memkind_free(pmem_kind, ptr)
+
+#else
+
 #define ALLOC_DATA(size) malloc(size)
 #define ALLOC_METADATA(size) malloc(size)
-
 #define FREE(ptr) free(ptr)
+
+#endif
+
 
 typedef struct ht_bucket {
     size_t htb_key;
@@ -227,6 +244,10 @@ int main(void) {
     size_t key, size, ret_size;
     void *addr;
 
+#if FSDAX
+    if (memkind_create_pmem(DEFAULT_MEMKIND_PATH, 0, &pmem_kind) != 0)
+	EXIT_MSG("Could not create pmem device: %s\n", strerror(errno));
+#endif
     /*
      * Allocate the space to remember the keys and sizes we add
      * to the hashtable.
