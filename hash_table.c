@@ -51,7 +51,7 @@ const char DEFAULT_MEMKIND_PATH[] = "/mnt/pmem/sasha";
 #define DEFAULT_SIZE_GB 32
 
 #define ALLOC_DATA(size) memkind_malloc(pmem_kind, size)
-#define ALLOC_METADATA(size) malloc(size)
+#define ALLOC_METADATA(size) memkind_malloc(pmem_kind, size)
 #define FREE(ptr) memkind_free(pmem_kind, ptr)
 
 #else
