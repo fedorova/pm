@@ -1,6 +1,6 @@
 CC = gcc
 CXXFLAGS=-g -D_GNU_SOURCE
-LDDFLAGS=-lpthread -lmemkind
+LDDFLAGS=-lpthread
 #LDDFLAGS=-lpthread -lmemkind
 
 SRC_FILES := $(wildcard *.c)
