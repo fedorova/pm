@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <jemalloc/jemalloc.h>
 #include <memkind.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,19 +10,32 @@
 
 const char DEFAULT_MEMKIND_PATH[] = "/mnt/pmem/sasha";
 
-#define DEFAULT_ALLOC_SIZE_GB 32
-#define DEFAULT_BLOCK_SIZE_KB 32
+#define DEFAULT_ALLOC_SIZE_GB 230
+#define DEFAULT_BLOCK_SIZE_KB 28
 
 #define MAX_CAPACITY_GB 220
 
 static const u_int64_t KB = 1024;
 static const u_int64_t GB = 1024 * 1024 * 1024;
 
+#if 0
+void printit(void *ctx, const char *str) {
+    printf("%s",str);
+}
+
+int jemalloc_info() {
+    printf("\n");
+    jemk_malloc_stats_print(printit, NULL, NULL);
+    return 0;
+}
+#endif
+
 int main(int argc, char **argv) {
 
     struct memkind *pmem_kind = NULL;
     char error_message[MEMKIND_ERROR_MESSAGE_SIZE];
     int err;
+    size_t metadata = 0, sz = sizeof(size_t);
     u_int64_t block_size, i, num_blocks, total_size;
     void **allocated_addresses;
 
@@ -55,16 +69,26 @@ int main(int argc, char **argv) {
     bzero(allocated_addresses, num_blocks * sizeof(void*));
 
     for (i = 0; i < num_blocks; i++) {
-	printf("Allocating block %" PRIu64 " of %" PRIu64 ".\n",
-	       i, num_blocks);
+	if ( i % 1024 == 0)
+	    printf("Allocating block %" PRIu64 " of %" PRIu64 ".\n",
+		   i, num_blocks);
 	allocated_addresses[i] = (void*) memkind_malloc(pmem_kind, block_size);
-	if (allocated_addresses[i] == NULL)
-	    printf("Could not allocate memory for block %" PRIu64 ".\n", i);
+	if (allocated_addresses[i] == NULL) {
+	    printf("Ran out of memory after %zu blocks (%zu bytes).\n", i, i*block_size);
+	    break;
+	    //printf("Could not allocate memory for block %" PRIu64 ".\n", i);
+	}
     }
 
+//    jemalloc_info();
+//    jemk_mallctl("stats.metadata", &metadata, &sz, NULL, 0);
+//    printf("metadata=%zu\n", metadata);
+    while(1);
+
     for (i = 0; i < num_blocks; i++) {
-	printf("Freeing block %" PRIu64 " of %" PRIu64 ".\n",
-	       i, num_blocks);
+	if ( i % 1024 == 0)
+	    printf("Freeing block %" PRIu64 " of %" PRIu64 ".\n",
+		   i, num_blocks);
 	if (allocated_addresses[i] != NULL)
 	    memkind_free(pmem_kind, allocated_addresses[i]);
     }
