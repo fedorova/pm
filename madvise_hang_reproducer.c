@@ -1,5 +1,6 @@
 #include <sys/types.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <memkind.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,23 +14,26 @@ const char DEFAULT_MEMKIND_PATH[] = "/mnt/pmem/sasha";
 
 #define MAX_CAPACITY_GB 220
 
-#define KB 1024
-#define GB 1024 * 1024 * 1024
+static const u_int64_t KB = 1024;
+static const u_int64_t GB = 1024 * 1024 * 1024;
 
 int main(int argc, char **argv) {
 
     struct memkind *pmem_kind = NULL;
+    char error_message[MEMKIND_ERROR_MESSAGE_SIZE];
     int err;
-    uint64_t block_size, num_blocks, total_size;
+    u_int64_t block_size, i, num_blocks, total_size;
     void **allocated_addresses;
 
-    if (argc == 2) {
+    if (argc == 3) {
 	block_size = atoi(argv[1]) * KB;
 	total_size = atoi(argv[2]) * GB;
 
 	if (block_size <= 0 || block_size / GB > MAX_CAPACITY_GB) {
-	    printf("usage: %s <block size in KB> <total memory in GB>\n"),
+	    printf("usage: %s <block size in KB> <total memory in GB>\n",
 		argv[0]);
+	    _exit(-1);
+	}
     }
     else {
 	block_size = DEFAULT_BLOCK_SIZE_KB * KB;
@@ -44,22 +48,22 @@ int main(int argc, char **argv) {
     num_blocks = total_size / block_size;
 
     allocated_addresses = malloc(num_blocks * sizeof(void*));
-    if (allocated_address == NULL) {
+    if (allocated_addresses == NULL) {
 	printf("Could not allocate memory for pointer addresses.\n");
 	_exit(-1);
     }
     bzero(allocated_addresses, num_blocks * sizeof(void*));
 
-    for (uint64_t i = 0; i < num_blocks; i++) {
-	printf("Allocating block % " PRIu64 " of " PRIu64 ".\n",
+    for (i = 0; i < num_blocks; i++) {
+	printf("Allocating block %" PRIu64 " of %" PRIu64 ".\n",
 	       i, num_blocks);
 	allocated_addresses[i] = (void*) memkind_malloc(pmem_kind, block_size);
 	if (allocated_addresses[i] == NULL)
 	    printf("Could not allocate memory for block %" PRIu64 ".\n", i);
     }
 
-    for (uint64_t i = 0; i < num_blocks; i++) {
-	printf("Freeing block % " PRIu64 " of " PRIu64 ".\n",
+    for (i = 0; i < num_blocks; i++) {
+	printf("Freeing block %" PRIu64 " of %" PRIu64 ".\n",
 	       i, num_blocks);
 	if (allocated_addresses[i] != NULL)
 	    memkind_free(pmem_kind, allocated_addresses[i]);
