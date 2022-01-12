@@ -41,7 +41,7 @@ drop_caches() {
 }
 
 # Use the block below to run a single test while collecting profiling info
-PROFILING_RUN=1
+PROFILING_RUN=0
 if [ ${PROFILING_RUN} = 1 ]
 then
    echo "Doing a profiling run..."
@@ -76,16 +76,18 @@ fi
 #for TEST in readmmap readsyscall writemmap writesyscall
 #for TEST in writemmap writesyscall
 #for TEST in readmmap readsyscall writesyscall
-for TEST in readmmap readsyscall
+#for TEST in readmmap readsyscall
+for TEST in readmmap
 do
     echo ${TEST}
 #    for BLOCK in 512 1024 2048 4096 8192 16384
 #    for BLOCK in 4096 8192 16384
     for BLOCK in 8192
     do
-    for i in {1}
+    for i in {5}
     do
-        for t in 1 2 4 8 16 32 64;
+        #        for t in 1 2 4 8 16 32 64;
+        for t in 8;
         do
 #       drop_caches
         ./fa -b ${BLOCK} --${TEST} -f ${FILE} ${ACCESS} ${SIZE} -t $t --silent ${DIRECTIO}
