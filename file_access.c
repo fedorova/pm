@@ -172,12 +172,7 @@ int main(int argc, char **argv) {
             block_size = atoi(optarg);
             break;
         case 'd':
-#ifdef __linux__
-            flags |= O_DIRECT;
-            MSG_NOT_SILENT("Using DIRECT_IO.\n");
-#else
             printf("Direct I/O not supported.\n");
-#endif
             break;
         case 'f':
             fname = optarg;
@@ -557,7 +552,7 @@ map_buffer(int fd, size_t size) {
 #ifdef __linux__ /* Assumes Linux 2.6.23 or newer */
     mmapped_buffer = (char *)mmap(NULL, size,
                       PROT_READ | PROT_WRITE,
-                      MAP_SHARED, fd, 0);
+                                  MAP_SHARED, fd, 0);
 #else
     mmapped_buffer = (char *)mmap(NULL, size,
                       PROT_READ | PROT_WRITE,

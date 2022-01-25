@@ -6,7 +6,7 @@ LDDFLAGS=-lpthread -lmemkind
 SRC_FILES := $(wildcard *.c)
 OBJ_FILES := $(SRC_FILES:.c=.o)
 
-# 	$(CC) -o  $@ $^ ${LDDFLAGS} -I ${HOME}/PMDK/memkind-1.10.1/jemalloc/include -L ${HOME}/PMDK/memkind-1.10.1/jemalloc/lib -ljemalloc
+#   $(CC) -o  $@ $^ ${LDDFLAGS} -I ${HOME}/PMDK/memkind-1.10.1/jemalloc/include -L ${HOME}/PMDK/memkind-1.10.1/jemalloc/lib -ljemalloc
 
 .PHONY: all clean
 
