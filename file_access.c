@@ -84,6 +84,7 @@ file_is_raw(const char *filename) {
             printf(__VA_ARGS__);   \
     } while (0)
 
+void*    allocate_aligned_buffer(size_t block_size);
 uint64_t do_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char *buf,
               char optype, off_t *offsets, uint64_t *begin, uint64_t *end);
 uint64_t do_read_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
@@ -97,6 +98,7 @@ uint64_t do_write_mmap_test(int fd, int tid, size_t block_size, size_t filesize,
 uint64_t do_write_syscall_test(int fd, int tid, size_t block_size, size_t filesize,
                    off_t *offsets,  uint64_t *begin, uint64_t *end);
 size_t   get_filesize(const char* filename);
+size_t   get_fs_blocksize(const char* filename);
 char*    map_buffer(int fd, size_t size);
 void     print_help_message(const char* progname);
 void    *run_tests(void *);
@@ -124,7 +126,7 @@ int main(int argc, char **argv) {
     char *fname = (char*) DEFAULT_FNAME;
     char *mapped_buffer = NULL;
     int c, fd, flags = O_RDWR, i, numthreads = 1, ret, option_index;
-    static int direct_io, randomaccess = 0,
+    static int directio, randomaccess = 0,
         read_mmap = 0, read_syscall = 0,
         write_mmap = 0, write_syscall = 0;
     off_t *offsets = 0;
@@ -174,7 +176,7 @@ int main(int argc, char **argv) {
             block_size = atoi(optarg);
             break;
         case 'd':
-            printf("Direct I/O not supported.\n");
+			directio = 1;
             break;
         case 'f':
             fname = optarg;
@@ -192,6 +194,9 @@ int main(int argc, char **argv) {
             break;
         }
     }
+
+	if ((read_mmap || read_syscall || write_mmap || write_syscall) == 0)
+		EXIT_MSG("Please tell me what test to run.\n");
 
     MSG_NOT_SILENT("pid: %d\n", getpid());
     MSG_NOT_SILENT("Using file %s\n", fname);
@@ -212,18 +217,26 @@ int main(int argc, char **argv) {
     if (file_is_devdax(fname) && (read_syscall || write_syscall))
         EXIT_MSG("Dev-dax mode does not support syscall experiments\n");
 
+	if (directio) {
+		MSG_NOT_SILENT("Will open file with the O_DIRECT flag.\n");
+		if ((ret = get_fs_blocksize(fname)) == -1)
+			EXIT_MSG("Failed to find the file system block size needed for O_DIRECT.\n");
+		else
+			block_size = ret;
+		flags |= O_DIRECT;
+	}
+
     fd = open((const char*)fname, flags, mode);
-    if (fd < 0) {
-        printf("Could not open/create file %s: %s\n",
+    if (fd < 0)
+		EXIT_MSG("Could not open/create file %s: %s\n",
                fname, strerror(errno));
-        _exit(-1);
-    }
 
     if (block_size < 0 || block_size > filesize)
         EXIT_MSG("Invalid block size: %" PRIu64 " for file of size "
                "%" PRIu64 ". Block size must be greater than zero "
                "and no greater than the file size.\n",
                (uint_least64_t)block_size, (uint_least64_t)filesize);
+	MSG_NOT_SILENT("Using block size %lu bytes.\n", block_size);
 
     /*
      * Generate random block numbers for random file access.
@@ -234,11 +247,9 @@ int main(int argc, char **argv) {
         numblocks++;
 
     offsets = (off_t *) malloc(numblocks * sizeof(off_t));
-    if (offsets == 0) {
-        printf("Failed to allocate memory: %s\n",
-               strerror(errno));
-        _exit(-1);
-    }
+    if (offsets == 0)
+        EXIT_MSG("Failed to allocate memory: %s\n", strerror(errno));
+
     for (size_t i = 0; i < numblocks; i++) {
         if (randomaccess)
             offsets[i] = ((int)random() % numblocks) * block_size;
@@ -381,11 +392,7 @@ do_syscall_test(int fd, int tid, size_t block_size, size_t filesize, char optype
     size_t i = 0, total_bytes_transferred = 0;
     uint64_t begin_time, end_time, ret_token = 0;
 
-    buffer = (char*)malloc(block_size);
-    if (buffer == NULL) {
-        printf("Failed to allocate memory: %s\n", strerror(errno));
-        return -1;
-    }
+	buffer = allocate_aligned_buffer(block_size);
     memset((void*)buffer, 0, block_size);
 
     begin_time = nano_time();
@@ -493,11 +500,7 @@ do_mmap_test(int fd, int tid, size_t block_size, size_t size,
     memset((void*)latency_samples, 0, sizeof(latency_samples));
 #endif
 
-    buffer = (char*)malloc(block_size);
-    if (buffer == NULL) {
-        printf("Failed to allocate memory: %s\n", strerror(errno));
-        return -1;
-    }
+	buffer = allocate_aligned_buffer(block_size);
     memset((void*)buffer, 1, block_size);
 
     begin_time = nano_time();
@@ -567,6 +570,21 @@ map_buffer(int fd, size_t size) {
     return mmapped_buffer;
 }
 
+/* Allocate the buffer aligned on its size */
+void*
+allocate_aligned_buffer(size_t size) {
+
+	size_t align = size - 1;
+	void *buf;
+
+	buf = malloc(size + align);
+	if (buf == NULL)
+		EXIT_MSG("Failed to allocate aligned buffer.\n");
+
+	buf = (void *)(((size_t)buf + align) & ~align);
+	return buf;
+}
+
 size_t
 get_filesize(const char* filename) {
 
@@ -576,13 +594,26 @@ get_filesize(const char* filename) {
     /* Devdax character device */
     if (file_is_devdax(filename) || file_is_raw(filename))
         return static_size_GB * (size_t)BYTES_IN_GB;
-    
+
     /* Regular files */
     retval = stat(filename, &st);
     if (retval)
         return -1;
     else
         return st.st_size;
+}
+
+size_t
+get_fs_blocksize(const char* filename) {
+
+    int retval;
+    struct stat st;
+
+    retval = stat(filename, &st);
+    if (retval)
+        return -1;
+    else
+        return st.st_blksize;
 }
 
 void
@@ -600,9 +631,13 @@ print_help_message(const char *progname) {
            "     For mmap tests, the size of the stride when iterating\n"
            "     over the file.\n"
            "     Defaults to %d.\n", DEFAULT_BLOCK_SIZE);
+	printf("  --directio\n"
+           "     Use O_DIRECT flag when opening the file.\n");
     printf("  -f, --file[=FILENAME]\n"
            "     Perform all tests on this file (defaults to %s).\n",
            DEFAULT_FNAME);
+	printf("  --randomaccess\n"
+           "     Access the file randomly. Default access mode is sequential.\n");
     printf("  --readsyscall\n"
            "     Perform a read test using system calls.\n");
     printf("  --readmmap\n"
