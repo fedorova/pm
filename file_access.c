@@ -42,6 +42,8 @@ static int static_size_GB = DEFAULT_SIZE_DEVDAX_GB;
 const char *devdax = "/dev/dax";
 const char *devraw[4] = {"/dev/nvme", "/dev/pmem", "/dev/mapper", 0};
 
+//int copy_linux(void *dst, void* src, int count);
+
 static int
 file_is_devdax(const char *filename) {
     if (strncmp(filename, devdax, strlen(devdax)) == 0)
