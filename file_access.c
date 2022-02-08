@@ -42,8 +42,6 @@ static int static_size_GB = DEFAULT_SIZE_DEVDAX_GB;
 const char *devdax = "/dev/dax";
 const char *devraw[4] = {"/dev/nvme", "/dev/pmem", "/dev/mapper", 0};
 
-//int copy_linux(void *dst, void* src, int count);
-
 static int
 file_is_devdax(const char *filename) {
     if (strncmp(filename, devdax, strlen(devdax)) == 0)
@@ -130,9 +128,9 @@ int main(int argc, char **argv) {
         read_mmap = 0, read_syscall = 0,
         write_mmap = 0, write_syscall = 0;
     off_t *offsets = 0;
-    size_t block_size = DEFAULT_BLOCK_SIZE, filesize, numblocks,
-        new_file_size = 0;
-    uint64_t min_start_time, max_end_time = 0, retval;
+    size_t block_size = DEFAULT_BLOCK_SIZE, filesize, fs_blocksize,
+        new_file_size = 0, numblocks;
+    uint64_t min_start_time, max_end_time = 0;
 
     pthread_t *threads;
     threadargs_t *threadargs;
@@ -219,11 +217,12 @@ int main(int argc, char **argv) {
 
 	if (directio) {
 		MSG_NOT_SILENT("Will open file with the O_DIRECT flag.\n");
-		if ((ret = get_fs_blocksize(fname)) == -1)
-			EXIT_MSG("Failed to find the file system block size needed for O_DIRECT.\n");
-		else
-			block_size = ret;
 		flags |= O_DIRECT;
+		fs_blocksize = get_fs_blocksize(fname);
+		if ((block_size / fs_blocksize < 1) || (block_size % fs_blocksize != 0))
+			EXIT_MSG("To use O_DIRECT the block size must be a multiple of file system size, "
+					 "which appears to be %lu bytes. You supplied the block size of %lu bytes.\n",
+					 fs_blocksize, block_size);
 	}
 
     fd = open((const char*)fname, flags, mode);
