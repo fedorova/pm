@@ -36,6 +36,7 @@
 #define DEFAULT_BLOCK_SIZE 8192
 #define DEFAULT_SIZE_DEVDAX_GB 32
 #define NANOSECONDS_IN_SECOND 1000000000
+#define OS_PAGE_SIZE 4096
 
 const char DEFAULT_FNAME[] = "/dev/dax0.0";
 static int static_size_GB = DEFAULT_SIZE_DEVDAX_GB;
@@ -82,6 +83,22 @@ file_is_raw(const char *filename) {
             printf(__VA_ARGS__);   \
     } while (0)
 
+typedef struct {
+    int tid;
+    int fd;
+    char *mapped_buffer;
+    int read_mmap;
+    int read_syscall;
+    int write_mmap;
+    int write_syscall;
+    off_t *offsets;
+    size_t block_size;
+    size_t chunk_size;
+    int retval;
+    uint64_t start_time;
+    uint64_t end_time;
+} threadargs_t;
+
 void*    allocate_aligned_buffer(size_t block_size);
 uint64_t do_mmap_test(int fd, int tid, size_t block_size, size_t filesize, char *buf,
               char optype, off_t *offsets, uint64_t *begin, uint64_t *end);
@@ -98,26 +115,12 @@ uint64_t do_write_syscall_test(int fd, int tid, size_t block_size, size_t filesi
 size_t   get_filesize(const char* filename);
 size_t   get_fs_blocksize(const char* filename);
 char*    map_buffer(int fd, size_t size);
+char*    map_buffer_per_thread(const char* fname, off_t *offsets, int off_size,
+							   int *fd, int flags, mode_t mode);
 void     print_help_message(const char* progname);
 void    *run_tests(void *);
 
 static int silent = 0;
-
-typedef struct {
-    int tid;
-    int fd;
-    char *mapped_buffer;
-    int read_mmap;
-    int read_syscall;
-    int write_mmap;
-    int write_syscall;
-    off_t *offsets;
-    size_t block_size;
-    size_t chunk_size;
-    int retval;
-    uint64_t start_time;
-    uint64_t end_time;
-} threadargs_t;
 
 int main(int argc, char **argv) {
 
@@ -264,9 +267,6 @@ int main(int argc, char **argv) {
                "Please fix your arguments.\n",
                (uint_least64_t)numblocks, numthreads);
 
-    if (read_mmap || write_mmap)
-        assert((mapped_buffer = map_buffer(fd, filesize)) != NULL);
-
     threads = (pthread_t*)malloc(numthreads * sizeof(pthread_t));
     threadargs =
         (threadargs_t*)malloc(numthreads * sizeof(threadargs_t));
@@ -274,12 +274,17 @@ int main(int argc, char **argv) {
         EXIT_MSG("Could not allocate thread array for %d threads.\n",
                numthreads);
 
+	if (read_mmap || write_mmap)
+		mapped_buffer = map_buffer(fd, filesize);
+
     for (i = 0; i < numthreads; i++) {
         threadargs[i].fd = fd;
         threadargs[i].tid = i;
         threadargs[i].block_size = block_size;
         threadargs[i].chunk_size = filesize / numthreads;
-        threadargs[i].mapped_buffer = mapped_buffer;
+		if (read_mmap || write_mmap)
+			threadargs[i].mapped_buffer = mapped_buffer;
+
         threadargs[i].offsets = &offsets[numblocks/numthreads * i];
         threadargs[i].read_mmap = read_mmap;
         threadargs[i].read_syscall = read_syscall;
@@ -555,7 +560,7 @@ map_buffer(int fd, size_t size) {
 
 #ifdef __linux__ /* Assumes Linux 2.6.23 or newer */
     mmapped_buffer = (char *)mmap(NULL, size,
-                      PROT_READ | PROT_WRITE,
+								  PROT_READ | PROT_WRITE,
                                   MAP_SHARED, fd, 0);
 #else
     mmapped_buffer = (char *)mmap(NULL, size,
@@ -568,6 +573,48 @@ map_buffer(int fd, size_t size) {
 
     return mmapped_buffer;
 }
+
+/*
+ * This is meant to be used if each thread maps its own buffer.
+ */
+char *
+map_buffer_per_thread(const char* fname, off_t *offsets, int off_size,
+					  int *ret_fd, int flags, mode_t mode) {
+
+	char *mmapped_buffer;
+	int i;
+	uint64_t off_min = ~0, off_max = 0;
+
+	*ret_fd = open(fname, flags, mode);
+	printf("Will map fd %d\n", *ret_fd);
+
+	/* Find out the range that we are mapping */
+	for (i = 0; i< off_size; i++) {
+		if (offsets[i] < off_min)
+			off_min = offsets[i];
+		if (offsets[i] > off_max)
+			off_max = offsets[i];
+	}
+
+	/* Update the offsets to be relative to the smallest one */
+	for (i = 0; i< off_size; i++)
+		offsets[i] -= off_min;
+
+	printf("Thread mapping min offset %" PRIu64 ", max offset %" PRIu64 "\n",
+		   off_min, off_max);
+
+    mmapped_buffer = (char *)mmap(NULL, off_max - off_min,
+                      PROT_READ | PROT_WRITE,
+                      MAP_SHARED, *ret_fd, off_min);
+    if (mmapped_buffer == MAP_FAILED)
+        EXIT_MSG("Failed to mmap file portion of size %" PRIu64 " : %s\n",
+				 (uint_least64_t)(off_max - off_min), strerror(errno));
+
+    return mmapped_buffer;
+
+}
+
+
 
 /* Allocate the buffer aligned on its size */
 void*
