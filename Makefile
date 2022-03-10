@@ -10,12 +10,15 @@ OBJ_FILES := $(SRC_FILES:.c=.o)
 
 .PHONY: all clean
 
-all: fa ht hang
+all: fa ht hang me
 
 fa: file_access.o nano_time.o
 	$(CC) -o  $@ $^ ${LDDFLAGS}
 
 ht: hash_table.o nano_time.o
+	$(CC) -o  $@ $^ ${LDDFLAGS}
+
+me: mmap-example.o
 	$(CC) -o  $@ $^ ${LDDFLAGS}
 
 memcopy: memcopy.c nano_time.o
