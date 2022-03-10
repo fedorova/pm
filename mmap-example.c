@@ -17,7 +17,7 @@
 
 #define N_THREADS 1
 #define DO_COPY 0
-#define DO_MMAP 0
+#define DO_MMAP 1
 #define DO_READ 0
 
 typedef struct {
